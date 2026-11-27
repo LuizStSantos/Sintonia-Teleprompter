@@ -170,10 +170,6 @@ impl App {
         let fontes = Fontes::carregar_sistema();
         cc.egui_ctx.set_fonts(fontes.definicoes());
         tema::aplicar(&cc.egui_ctx, cfg.tema_claro);
-        // Texto rolando em frações de pixel: sem isso ele anda "em degraus"
-        // (1 px a cada poucos quadros), o que parece engasgado em velocidade baixa.
-        cc.egui_ctx
-            .tessellation_options_mut(|o| o.round_text_to_pixels = false);
         let marca = eframe::icon_data::from_png_bytes(tema::ICONE_PNG)
             .ok()
             .map(|ic| {

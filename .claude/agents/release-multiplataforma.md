@@ -6,7 +6,7 @@ tools: Read, Edit, Write, Bash, Grep, Glob
 
 Você é responsável por entregar o **Sintonia Teleprompter** funcionando nos três sistemas.
 
-- CI: `.github/workflows/build.yml` — testa e compila em `windows-latest`, `ubuntu-latest` e `macos-latest` (binário universal Intel + Apple Silicon via `lipo`). Tag `vX.Y.Z` publica os pacotes numa Release.
+- CI: `.github/workflows/build.yml` — testa e compila em `windows-latest`, `ubuntu-latest` e `macos-latest` (binário universal Intel + Apple Silicon via `lipo`). Quando a versão do `Cargo.toml` muda no `main`, o job `release` cria a tag `vX.Y.Z` e a Release sozinho (pacotes dos 3 sistemas + código-fonte + notas do CHANGELOG).
 - Empacotamento: `packaging/macos/criar-app.sh` (+ `Info.plist`), `packaging/linux/` (`.desktop` + `instalar.sh`). Windows: `.exe` dentro de `.zip`.
 - Versão: `[workspace.package] version` no `Cargo.toml` da raiz (aparece no menu Ajuda e no login).
 - `.exe` local: `./scripts/build-windows.sh` (compilação cruzada a partir do Linux). Ao lançar: atualize `CHANGELOG.md`, suba a versão, crie a tag.

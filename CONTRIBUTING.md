@@ -50,8 +50,12 @@ Regra: lógica nova que dá para testar sem tela vai para `roteiro` ou
 - Versionamento semântico (`MAJOR.MINOR.PATCH`), definido uma vez só em
   `[workspace.package]` no `Cargo.toml` da raiz.
 - Toda mudança visível entra no [CHANGELOG.md](CHANGELOG.md).
-- Para lançar: atualize versão e changelog, faça o commit e crie a tag
-  `vX.Y.Z`. O CI publica os pacotes dos três sistemas numa Release.
+- **Para lançar**: suba a versão no `Cargo.toml` da raiz, escreva a seção
+  `## X.Y.Z — data` no `CHANGELOG.md` e envie para o `main`. O CI testa, gera os
+  pacotes de Windows, macOS e Linux e, como a versão é nova, **cria sozinho a
+  tag `vX.Y.Z` e a Release** com os pacotes, o código-fonte (`.zip` e
+  `.tar.gz`) e as notas daquela seção do CHANGELOG. Versão repetida não gera
+  Release nova.
 
 ## Agentes de IA
 

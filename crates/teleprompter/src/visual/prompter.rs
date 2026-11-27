@@ -69,10 +69,6 @@ impl Espelho {
         }
     }
 
-    pub fn ativo(&self) -> bool {
-        self.horizontal || self.vertical
-    }
-
     pub fn ponto(&self, p: Pos2) -> Pos2 {
         Pos2::new(
             if self.horizontal {
@@ -89,13 +85,14 @@ impl Espelho {
     }
 
     /// Desenha um bloco de texto já diagramado, espelhando se preciso.
+    /// Desenha um bloco de texto do teleprompter.
+    ///
+    /// Sempre por uma malha própria (e não pelo desenho normal do egui) por dois
+    /// motivos: (1) o egui não sabe desenhar texto invertido — invertemos os
+    /// vértices; (2) o texto que rola fica em frações de pixel e anda liso, sem
+    /// "degraus", enquanto o resto da interface continua alinhado ao pixel e
+    /// nítido (desligar isso no programa todo deixava os menus embaçados).
     pub fn texto(&self, ui: &Ui, painter: &Painter, pos: Pos2, galley: Arc<Galley>, cor: Color32) {
-        if !self.ativo() {
-            painter.galley(pos, galley, cor);
-            return;
-        }
-        // O egui não sabe desenhar texto invertido; então transformamos o texto
-        // em triângulos (como a placa de vídeo faria) e invertemos os vértices.
         let ctx = ui.ctx();
         let tamanho_atlas = ctx.fonts(|f| f.font_image_size());
         let ppp = ctx.pixels_per_point();

@@ -85,8 +85,9 @@ sintonia-teleprompter/
    linhas é idêntica nas duas telas.
 5. **Rolagem**: `rolagem_em += (velocidade/100)^1,5 × 8 × dt` a cada quadro
    (100 % = 8 em/s), com `dt` medido no relógio real; "passar rápido" usa
-   20 em/s enquanto o botão é segurado. O texto é posicionado em frações de
-   pixel (`round_text_to_pixels = false`) para não andar "em degraus".
+   20 em/s enquanto o botão é segurado. Só o texto do teleprompter é posicionado
+   em frações de pixel (malha própria em `Espelho::texto`), para não andar "em
+   degraus"; o resto da interface fica alinhado ao pixel, nítido.
 6. **Gravar no Sintonia**: busca o espelho atual, troca só o `texto` dos itens
    alterados e faz `PUT /api/espelho/:id` (o servidor registra no Histórico).
 

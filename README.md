@@ -132,8 +132,8 @@ tela do apresentador (mesma proporção), sem espelhar.
 
 ## Instalação
 
-Baixe o pacote do seu sistema na página de **Releases** do repositório
-(gerado automaticamente pelo GitHub Actions a cada versão):
+Baixe o pacote do seu sistema na página de **[Releases](https://github.com/LuizStSantos/Sintonia-Teleprompter/releases)**
+(publicada automaticamente pelo GitHub a cada versão, junto com o código-fonte):
 
 - **Windows**: `sintonia-teleprompter-windows-x64.zip` → descompacte e abra
   `Sintonia Teleprompter.exe`.

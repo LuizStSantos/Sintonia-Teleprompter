@@ -132,10 +132,67 @@ jobs:
             sintonia-teleprompter-*.zip
             sintonia-teleprompter-*.tar.gz
 
-      - name: Publicar na Release
-        if: startsWith(github.ref, 'refs/tags/v')
+  # Release automática: quando a versão do Cargo.toml muda no main (ou numa tag
+  # vX.Y.Z), cria a tag e publica a Release com os pacotes dos três sistemas,
+  # o código-fonte e as notas da versão tiradas do CHANGELOG.md.
+  release:
+    name: Publicar Release
+    needs: build
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Versão e se já foi publicada
+        id: versao
+        run: |
+          VERSAO="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          echo "versao=$VERSAO" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/* ]] || ! git rev-parse -q --verify "refs/tags/v$VERSAO" >/dev/null; then
+            echo "publicar=sim" >> "$GITHUB_OUTPUT"
+          else
+            echo "A versão $VERSAO já tem Release; nada a fazer."
+            echo "publicar=nao" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Baixar os pacotes do build
+        if: steps.versao.outputs.publicar == 'sim'
+        uses: actions/download-artifact@v4
+        with:
+          path: pacotes
+          merge-multiple: true
+
+      - name: Código-fonte e notas da versão
+        if: steps.versao.outputs.publicar == 'sim'
+        run: |
+          V="${{ steps.versao.outputs.versao }}"
+          for f in pacotes/sintonia-teleprompter-*; do
+            mv "$f" "${f/sintonia-teleprompter-/sintonia-teleprompter-$V-}"
+          done
+          git archive --format=tar.gz --prefix="sintonia-teleprompter-$V/" -o "pacotes/sintonia-teleprompter-$V-codigo-fonte.tar.gz" HEAD
+          git archive --format=zip --prefix="sintonia-teleprompter-$V/" -o "pacotes/sintonia-teleprompter-$V-codigo-fonte.zip" HEAD
+          # Notas: a seção "## V" do CHANGELOG.md, até a próxima versão.
+          awk -v v="$V" '$0 ~ "^## "v" " {p=1; next} /^## [0-9]/ {p=0} p' CHANGELOG.md > notas.md
+          {
+            echo
+            echo "### Downloads"
+            echo "- **Windows**: \`sintonia-teleprompter-$V-windows-x64.zip\` — descompacte e abra *Sintonia Teleprompter.exe*"
+            echo "- **macOS** (Intel e Apple Silicon): \`sintonia-teleprompter-$V-macos-universal.zip\`"
+            echo "- **Linux**: \`sintonia-teleprompter-$V-linux-x64.tar.gz\` — descompacte e rode \`./instalar.sh\`"
+            echo "- **Código-fonte**: \`sintonia-teleprompter-$V-codigo-fonte.zip\` / \`.tar.gz\`"
+          } >> notas.md
+          ls -la pacotes; cat notas.md
+
+      - name: Publicar
+        if: steps.versao.outputs.publicar == 'sim'
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            sintonia-teleprompter-*.zip
-            sintonia-teleprompter-*.tar.gz
+          tag_name: v${{ steps.versao.outputs.versao }}
+          target_commitish: ${{ github.sha }}
+          name: Sintonia Teleprompter ${{ steps.versao.outputs.versao }}
+          body_path: notas.md
+          files: pacotes/*

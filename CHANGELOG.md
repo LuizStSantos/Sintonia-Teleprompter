@@ -3,6 +3,13 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/); versões
 seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## 0.5.2 — 2026-11-27
+- Corrige letras embaçadas nos menus e botões (desde a 0.5.0): a interface volta
+  a ficar alinhada ao pixel; só o texto que rola no teleprompter anda em frações
+  de pixel, para continuar liso.
+- Release automática no GitHub: a cada versão nova no `main`, o CI cria a tag e
+  publica os pacotes de Windows, macOS e Linux, o código-fonte e as notas.
+
 ## 0.5.1 — 2026-11-27
 - A prévia usa o tamanho e a orientação (inclusive retrato) do monitor escolhido
   para o apresentador, antes mesmo de abrir; a janela já abre nesse tamanho.
