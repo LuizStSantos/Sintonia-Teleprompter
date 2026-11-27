@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Sintonia Teleprompter
+Comment=Teleprompter integrado ao Sintonia
+Exec=sintonia-teleprompter
+Icon=sintonia-teleprompter
+Terminal=false
+Categories=AudioVideo;Video;

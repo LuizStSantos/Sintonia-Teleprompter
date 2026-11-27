@@ -1,0 +1,89 @@
+# Compila e testa o Sintonia Teleprompter nos 3 sistemas.
+# Em toda tag "v*" (ex.: v0.1.0), publica os executáveis numa Release do GitHub.
+name: Build
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.nome }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nome: Windows
+            os: windows-latest
+          - nome: Linux
+            os: ubuntu-latest
+          - nome: macOS
+            os: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Bibliotecas do Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+
+      - name: Testes
+        run: cargo test --locked
+
+      - name: Build (Windows / Linux)
+        if: runner.os != 'macOS'
+        run: cargo build --release --locked
+
+      - name: Pacote Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/sintonia-teleprompter.exe "dist/Sintonia Teleprompter.exe"
+          Compress-Archive -Path "dist/Sintonia Teleprompter.exe" -DestinationPath sintonia-teleprompter-windows-x64.zip
+
+      - name: Pacote Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist/sintonia-teleprompter
+          cp target/release/sintonia-teleprompter assets/sintonia-icone.png packaging/linux/* dist/sintonia-teleprompter/
+          tar -C dist -czf sintonia-teleprompter-linux-x64.tar.gz sintonia-teleprompter
+
+      - name: Build + pacote macOS (universal: Intel e Apple Silicon)
+        if: runner.os == 'macOS'
+        run: |
+          cargo build --release --locked --target aarch64-apple-darwin
+          cargo build --release --locked --target x86_64-apple-darwin
+          lipo -create -output sintonia-teleprompter \
+            target/aarch64-apple-darwin/release/sintonia-teleprompter \
+            target/x86_64-apple-darwin/release/sintonia-teleprompter
+          ./packaging/macos/criar-app.sh sintonia-teleprompter
+          ditto -c -k --keepParent "Sintonia Teleprompter.app" sintonia-teleprompter-macos-universal.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sintonia-teleprompter-${{ runner.os }}
+          path: |
+            sintonia-teleprompter-*.zip
+            sintonia-teleprompter-*.tar.gz
+
+      - name: Publicar na Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            sintonia-teleprompter-*.zip
+            sintonia-teleprompter-*.tar.gz

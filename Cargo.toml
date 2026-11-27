@@ -1,0 +1,31 @@
+[package]
+name = "sintonia-teleprompter"
+version = "0.1.0"
+edition = "2024"
+description = "Teleprompter multiplataforma (Windows, macOS e Linux) integrado ao Sintonia"
+publish = false
+
+[[bin]]
+name = "sintonia-teleprompter"
+path = "src/main.rs"
+
+[dependencies]
+chrono = "0.4.45"
+directories = "6.0.0"
+eframe = "0.37.0"
+egui = "0.37.0"
+fontdb = "0.24.0"
+reqwest = { version = "0.13.5", features = ["json", "cookies", "blocking"] }
+rfd = "0.18.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+# Dependências compiladas otimizadas mesmo em modo debug (o desenho fica fluido).
+[profile.dev.package."*"]
+opt-level = 2

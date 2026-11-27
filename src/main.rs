@@ -1,0 +1,32 @@
+//! Sintonia Teleprompter — teleprompter multiplataforma (Windows, macOS e Linux)
+//! integrado ao Sintonia (login e Espelho do programa).
+
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
+
+mod api;
+mod app;
+mod fonts;
+mod prompter;
+mod script;
+mod settings;
+mod theme;
+mod timer;
+
+fn main() -> eframe::Result<()> {
+    let opcoes = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("Sintonia Teleprompter — Operador")
+            .with_inner_size([1360.0, 820.0])
+            .with_min_inner_size([900.0, 560.0])
+            .with_icon(eframe::icon_data::from_png_bytes(theme::ICONE_PNG).unwrap_or_default()),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "Sintonia Teleprompter",
+        opcoes,
+        Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
+    )
+}
