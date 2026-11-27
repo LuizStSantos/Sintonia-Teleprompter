@@ -13,8 +13,11 @@ chmod +x "$APP/Contents/MacOS/sintonia-teleprompter"
 # Ícone .icns a partir do PNG do Sintonia
 ICONSET="$(mktemp -d)/sintonia.iconset"
 mkdir -p "$ICONSET"
-for t in 16 32 64 128 256 512; do
-  sips -z $t $t "$RAIZ/crates/teleprompter/assets/sintonia-icone.png" --out "$ICONSET/icon_${t}x${t}.png" >/dev/null
+# Tamanhos exigidos pelo macOS (normal e @2x), a partir do ícone de 1024 px.
+ORIGEM="$RAIZ/crates/teleprompter/assets/icones/icone-1024.png"
+for t in 16 32 128 256 512; do
+  sips -z $t $t "$ORIGEM" --out "$ICONSET/icon_${t}x${t}.png" >/dev/null
+  sips -z $((t*2)) $((t*2)) "$ORIGEM" --out "$ICONSET/icon_${t}x${t}@2x.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/sintonia.icns"
 

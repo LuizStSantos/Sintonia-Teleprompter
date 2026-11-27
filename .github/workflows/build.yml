@@ -14,6 +14,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Usado só para decidir se há certificado do Windows (o valor não aparece nos logs).
+  WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
 
 jobs:
   qualidade:
@@ -63,22 +65,39 @@ jobs:
         if: runner.os != 'macOS'
         run: cargo build --release --locked
 
+      # Assinatura Authenticode: só roda se o certificado estiver nos Secrets
+      # (WINDOWS_CERT_PFX_BASE64 e WINDOWS_CERT_PASSWORD). Ver docs/ASSINATURA.md.
+      - name: Assinar .exe (Windows)
+        if: runner.os == 'Windows' && env.WINDOWS_CERT_PFX_BASE64 != ''
+        shell: pwsh
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "certificado.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERT_PFX_BASE64))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName -Descending | Select-Object -First 1
+          & $signtool.FullName sign /f $pfx /p $env:WINDOWS_CERT_PASSWORD /fd sha256 /tr http://timestamp.digicert.com /td sha256 /d "Sintonia Teleprompter" target/release/sintonia-teleprompter.exe
+          & $signtool.FullName verify /pa target/release/sintonia-teleprompter.exe
+          Remove-Item $pfx
+
       - name: Pacote Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target/release/sintonia-teleprompter.exe "dist/Sintonia Teleprompter.exe"
-          Compress-Archive -Path "dist/Sintonia Teleprompter.exe" -DestinationPath sintonia-teleprompter-windows-x64.zip
+          New-Item -ItemType Directory -Force "dist/Sintonia Teleprompter" | Out-Null
+          Copy-Item target/release/sintonia-teleprompter.exe "dist/Sintonia Teleprompter/Sintonia Teleprompter.exe"
+          Copy-Item packaging/windows/LEIA-ME.txt "dist/Sintonia Teleprompter/"
+          Compress-Archive -Path "dist/Sintonia Teleprompter" -DestinationPath sintonia-teleprompter-windows-x64.zip
 
       - name: Pacote Linux
         if: runner.os == 'Linux'
         run: |
           mkdir -p dist/sintonia-teleprompter
-          cp target/release/sintonia-teleprompter crates/teleprompter/assets/sintonia-icone.png packaging/linux/* dist/sintonia-teleprompter/
+          cp target/release/sintonia-teleprompter crates/teleprompter/assets/icones/icone-256.png packaging/linux/* dist/sintonia-teleprompter/
           tar -C dist -czf sintonia-teleprompter-linux-x64.tar.gz sintonia-teleprompter
 
-      - name: Build + pacote macOS (universal: Intel e Apple Silicon)
+      - name: "Build + pacote macOS (universal: Intel e Apple Silicon)"
         if: runner.os == 'macOS'
         run: |
           cargo build --release --locked --target aarch64-apple-darwin
@@ -87,7 +106,24 @@ jobs:
             target/aarch64-apple-darwin/release/sintonia-teleprompter \
             target/x86_64-apple-darwin/release/sintonia-teleprompter
           ./packaging/macos/criar-app.sh sintonia-teleprompter
-          ditto -c -k --keepParent "Sintonia Teleprompter.app" sintonia-teleprompter-macos-universal.zip
+
+      # Assinatura + notarização da Apple: só roda com os Secrets do Apple
+      # Developer (ver docs/ASSINATURA.md). Sem eles, o app recebe assinatura
+      # local ("ad-hoc"), que basta para abrir com botão direito → Abrir.
+      - name: Assinar e notarizar (macOS)
+        if: runner.os == 'macOS'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: ./packaging/macos/assinar.sh "Sintonia Teleprompter.app"
+
+      - name: Compactar (macOS)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --keepParent "Sintonia Teleprompter.app" sintonia-teleprompter-macos-universal.zip
 
       - uses: actions/upload-artifact@v4
         with:

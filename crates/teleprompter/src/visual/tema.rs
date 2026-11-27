@@ -217,4 +217,4 @@ pub fn aplicar(ctx: &egui::Context, claro: bool) {
 }
 
 /// Ícone do Sintonia (torre de rádio no quadrado vermelho), igual ao do site.
-pub const ICONE_PNG: &[u8] = include_bytes!("../../assets/sintonia-icone.png");
+pub const ICONE_PNG: &[u8] = include_bytes!("../../assets/icones/icone-256.png");
