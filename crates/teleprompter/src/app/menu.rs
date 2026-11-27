@@ -69,6 +69,11 @@ impl App {
                 ui.label(RichText::new("Clique no monitor: a tela já abre em tela cheia nele.").size(11.5).color(p.texto_mais_fraco));
                 ui.add_space(4.0);
                 self.seletor_monitor(ui);
+                ui.separator();
+                ui.label(RichText::new("Espelhamento (vidro do teleprompter)").font(tema::forte(13.0)));
+                ui.checkbox(&mut self.cfg.espelhar_horizontal, "Espelhar horizontal");
+                ui.checkbox(&mut self.cfg.espelhar_vertical, "Inverter vertical");
+                ui.checkbox(&mut self.cfg.previa_espelhada, "Prévia espelhada também");
             });
             ui.menu_button("Predefinições", |ui| {
                 if self.cfg.predefinicoes.is_empty() {

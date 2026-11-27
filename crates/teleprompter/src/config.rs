@@ -53,6 +53,8 @@ pub struct Settings {
     // Leitura
     pub espelhar_horizontal: bool,
     pub espelhar_vertical: bool,
+    /// A prévia do operador também aparece espelhada (igual ao vidro).
+    pub previa_espelhada: bool,
     pub mostrar_marcador: bool,
     /// Altura da linha de leitura, em % da altura da tela.
     pub marcador_pct: f32,
@@ -114,6 +116,7 @@ impl Default for Settings {
             mostrar_titulos: true,
             espelhar_horizontal: false,
             espelhar_vertical: false,
+            previa_espelhada: false,
             mostrar_marcador: true,
             marcador_pct: 30.0,
             velocidade_pct: 15.0,

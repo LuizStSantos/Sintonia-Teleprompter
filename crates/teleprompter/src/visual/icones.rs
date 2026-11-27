@@ -24,6 +24,7 @@ pub enum Icone {
     Mais,
     Lixeira,
     Usuario,
+    Espelhar,
 }
 
 /// Desenha o ícone ocupando o quadrado `r`.
@@ -135,6 +136,18 @@ pub fn desenhar(ui: &Ui, r: Rect, icone: Icone, cor: Color32) {
         Icone::Fechar => {
             p.line_segment([pt(-0.26, -0.26), pt(0.26, 0.26)], traco);
             p.line_segment([pt(0.26, -0.26), pt(-0.26, 0.26)], traco);
+        }
+        Icone::Espelhar => {
+            // Uma seta cheia e sua "imagem" vazada, refletidas na linha do vidro.
+            p.line_segment(
+                [pt(0.0, -0.42), pt(0.0, 0.42)],
+                Stroke::new(traco.width * 0.7, cor),
+            );
+            p.add(triangulo([pt(-0.1, -0.28), pt(-0.44, 0.0), pt(-0.1, 0.28)]));
+            p.add(Shape::closed_line(
+                vec![pt(0.1, -0.28), pt(0.44, 0.0), pt(0.1, 0.28)],
+                Stroke::new(traco.width * 0.8, cor),
+            ));
         }
         Icone::Mais => {
             p.line_segment([pt(-0.3, 0.0), pt(0.3, 0.0)], traco);

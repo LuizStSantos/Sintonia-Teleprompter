@@ -200,10 +200,11 @@ impl App {
             );
             ui.checkbox(&mut self.cfg.espelhar_vertical, "Inverter vertical");
             ui.label(
-                RichText::new("O espelhamento vale só na tela do apresentador.")
+                RichText::new("Para ver a prévia espelhada também, marque abaixo.")
                     .small()
                     .weak(),
             );
+            ui.checkbox(&mut self.cfg.previa_espelhada, "Prévia espelhada também");
             ui.checkbox(&mut self.cfg.mostrar_marcador, "Seta de leitura");
             ui.label("Altura da linha de leitura");
             ui.add(egui::Slider::new(&mut self.cfg.marcador_pct, 5.0..=70.0).suffix(" %"));
@@ -253,7 +254,8 @@ impl App {
             ui.label(
                 RichText::new(format!(
                     "Tela do apresentador: {:.0} × {:.0}",
-                    self.tamanho_apresentador.x, self.tamanho_apresentador.y
+                    self.tamanho_alvo_apresentador().x,
+                    self.tamanho_alvo_apresentador().y
                 ))
                 .small()
                 .weak(),

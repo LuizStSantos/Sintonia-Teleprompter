@@ -65,7 +65,16 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
 - **Computadores simples**: o padrão é o renderizador **OpenGL**, mais leve; dá
   para trocar em Formatação → Desempenho.
 
-![Tela do apresentador espelhada](docs/tela-apresentador-espelhada.png)
+## Telas
+
+Prints da versão atual, numa tela de 1366 × 768.
+
+| | |
+|---|---|
+| ![Entrada](docs/tela-login.png) **Entrada** — mesmo login do Sintonia, com situação do servidor | ![Abrir espelho](docs/tela-seletor-espelho.png) **Abrir espelho** — escolha o dia, o programa e veja os itens antes |
+| ![Operador](docs/tela-operador.png) **Operador** — roteiro, prévia e controles | ![Barra recolhida](docs/tela-recolhida.png) **Recolhido** — setinhas deixam a prévia quase na tela toda |
+| ![Apresentador espelhado](docs/tela-apresentador-espelhada.png) **Apresentador** — texto espelhado para o vidro | ![Só cronômetro](docs/tela-so-cronometro.png) **Só cronômetro** — tempo de entrevista no meio da tela |
+| ![Escolha do monitor](docs/tela-monitores.png) **Apresentador** — escolha o monitor e o espelhamento | ![Tema claro](docs/tela-tema-claro.png) **Tema claro** — igual à opção do Sintonia |
 
 ## Atalhos (os mesmos do Apotec)
 
@@ -110,7 +119,13 @@ A colheita da soja avança no estado...
    mostra o nome e a resolução de cada um): a tela do apresentador já abre
    **em tela cheia nele**. O botão **Abrir apresentador**, acima da prévia,
    abre direto no monitor que não é o do operador.
-3. Se o monitor fica atrás de um vidro, marque **Espelhar horizontal** em Formatação.
+3. Se o monitor fica atrás de um vidro, clique em **Espelhar** (em cima da
+   prévia ou no menu Apresentador). Marque **ver espelhado** para a prévia
+   mostrar exatamente o que vai para o vidro.
+
+A prévia já assume o **tamanho e a orientação do monitor escolhido** — inclusive
+monitor em pé (retrato) — antes mesmo de abrir a tela do apresentador, então a
+quebra de linhas na prévia é a mesma do teleprompter.
 
 A prévia na tela do operador mostra exatamente a mesma quebra de linhas da
 tela do apresentador (mesma proporção), sem espelhar.
@@ -133,7 +148,6 @@ Na primeira tela, informe o endereço do servidor do Sintonia (o mesmo do
 navegador, ex.: `http://servidor:3001`), usuário e senha. O endereço e o
 usuário ficam salvos; a senha só no cofre do sistema, se você pedir.
 
-![Tela de entrada](docs/tela-login.png)
 
 ## Desenvolvimento
 

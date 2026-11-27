@@ -3961,7 +3961,7 @@ checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
 name = "sintonia-api"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "keyring",
  "reqwest",
@@ -3971,14 +3971,14 @@ dependencies = [
 
 [[package]]
 name = "sintonia-roteiro"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "sintonia-teleprompter"
-version = "0.5.0"
+version = "0.5.1"
 dependencies = [
  "chrono",
  "directories",

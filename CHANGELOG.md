@@ -3,6 +3,13 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/); versões
 seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## 0.5.1 — 2026-11-27
+- A prévia usa o tamanho e a orientação (inclusive retrato) do monitor escolhido
+  para o apresentador, antes mesmo de abrir; a janela já abre nesse tamanho.
+- Espelhamento à vista: botão "Espelhar" em cima da prévia e no menu Apresentador;
+  opção "ver espelhado" para a prévia mostrar o que vai para o vidro.
+- Prints do README atualizados (galeria com todas as telas).
+
 ## 0.5.0 — 2026-11-27
 ### Telas
 - Ícones desenhados (play, pausa, voltar, avançar, zerar, cronômetro…) no lugar

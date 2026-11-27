@@ -30,8 +30,23 @@ impl App {
                 altura: m.size().height,
                 principal: principal.as_ref() == Some(&m),
                 do_operador: do_operador.as_ref() == Some(&m),
+                escala: m.scale_factor() as f32,
             })
             .collect();
+    }
+
+    /// Tamanho que a tela do apresentador tem (aberta) ou vai ter (fechada):
+    /// a prévia usa a mesma proporção, inclusive monitor em pé (retrato).
+    pub(super) fn tamanho_alvo_apresentador(&self) -> Vec2 {
+        if self.apresentador_aberto {
+            return self.tamanho_apresentador;
+        }
+        if self.cfg.tela_cheia_apresentador
+            && let Some(m) = self.monitores.get(self.cfg.monitor_apresentador)
+        {
+            return m.tamanho_logico();
+        }
+        self.tamanho_apresentador
     }
 
     /// Monitor mais indicado para o apresentador: o primeiro que não é o do operador.
@@ -57,6 +72,10 @@ impl App {
             Some(i) => {
                 self.cfg.monitor_apresentador = i;
                 self.cfg.tela_cheia_apresentador = true;
+                // A prévia já assume o tamanho e a orientação do monitor escolhido.
+                if let Some(m) = self.monitores.get(i) {
+                    self.tamanho_apresentador = m.tamanho_logico();
+                }
             }
             None => self.cfg.tela_cheia_apresentador = false,
         }
@@ -194,7 +213,11 @@ impl App {
         }
         let mut builder = ViewportBuilder::default()
             .with_title("Sintonia Teleprompter — Apresentador")
-            .with_inner_size([1280.0, 720.0]);
+            .with_inner_size(if self.cfg.tela_cheia_apresentador {
+                self.tamanho_alvo_apresentador()
+            } else {
+                Vec2::new(1280.0, 720.0)
+            });
         if self.cfg.tela_cheia_apresentador {
             builder = builder
                 .with_fullscreen(true)
@@ -254,5 +277,24 @@ impl App {
                     }
                 });
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn monitor_em_pe_e_com_escala() {
+        let m = InfoMonitor {
+            nome: "Teleprompter".into(),
+            largura: 1080,
+            altura: 1920,
+            principal: false,
+            do_operador: false,
+            escala: 1.5,
+        };
+        let t = m.tamanho_logico();
+        assert_eq!((t.x, t.y), (720.0, 1280.0), "retrato e escala de 150 %");
     }
 }

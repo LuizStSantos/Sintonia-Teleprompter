@@ -149,6 +149,15 @@ pub(super) struct InfoMonitor {
     pub(super) principal: bool,
     /// É o monitor onde está a janela do operador.
     pub(super) do_operador: bool,
+    /// Escala do sistema (ex.: 1,25 = 125 %), para converter pixels em pontos.
+    pub(super) escala: f32,
+}
+
+impl InfoMonitor {
+    /// Tamanho em pontos (o que a tela do apresentador vai ter em tela cheia).
+    pub(super) fn tamanho_logico(&self) -> Vec2 {
+        Vec2::new(self.largura as f32, self.altura as f32) / self.escala.max(0.5)
+    }
 }
 
 fn hoje() -> String {
