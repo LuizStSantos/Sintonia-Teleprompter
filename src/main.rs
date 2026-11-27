@@ -20,7 +20,7 @@ fn main() -> eframe::Result<()> {
         viewport: egui::ViewportBuilder::default()
             .with_title("Sintonia Teleprompter — Operador")
             .with_inner_size([1360.0, 820.0])
-            .with_min_inner_size([900.0, 560.0])
+            .with_min_inner_size([1180.0, 640.0])
             .with_icon(eframe::icon_data::from_png_bytes(theme::ICONE_PNG).unwrap_or_default()),
         ..Default::default()
     };

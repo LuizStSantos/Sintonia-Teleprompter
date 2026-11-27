@@ -98,7 +98,7 @@ impl Default for Settings {
             espelhar_vertical: false,
             mostrar_marcador: true,
             marcador_pct: 30.0,
-            velocidade_pct: 10.0,
+            velocidade_pct: 15.0,
             palavras_por_minuto: 150,
             crono_automatico: true,
             entrevista_com_tempo: false,

@@ -3,7 +3,7 @@
 use crate::api::{Api, Comando, Resposta, Usuario};
 use crate::fonts::Fontes;
 use crate::prompter::{self, Espelho, Medidas, cor};
-use crate::script::{EspelhoResumo, Origem, Roteiro, Segmento, Tipo, data_br, decodificar_txt};
+use crate::script::{EspelhoResumo, Origem, Roteiro, Segmento, Tipo, decodificar_txt};
 use crate::settings::{Alinhamento, Settings};
 use crate::theme::{self, Paleta};
 use crate::timer::{Cronometro, fmt_tempo, parse_duracao};
@@ -17,7 +17,25 @@ use std::time::{Duration, Instant};
 const ID_APRESENTADOR: &str = "sintonia-apresentador";
 
 /// Velocidade em 100 %, em "em" (altura da letra) por segundo.
-const VELOCIDADE_MAXIMA_EM: f32 = 5.0;
+const VELOCIDADE_MAXIMA_EM: f32 = 8.0;
+/// "Passar rápido" (segurar ⏩/⏪, o botão direito do mouse ou Shift+↓/↑).
+const VELOCIDADE_TURBO_EM: f32 = 20.0;
+/// Velocidades prontas dos botões da barra de baixo.
+const VELOCIDADES_PRONTAS: [(&str, f32); 4] = [
+    ("Lenta", 8.0),
+    ("Normal", 15.0),
+    ("Rápida", 35.0),
+    ("Máx.", 100.0),
+];
+const DIAS_SEMANA: [&str; 7] = [
+    "Segunda-feira",
+    "Terça-feira",
+    "Quarta-feira",
+    "Quinta-feira",
+    "Sexta-feira",
+    "Sábado",
+    "Domingo",
+];
 
 #[derive(PartialEq)]
 enum Tela {
@@ -71,6 +89,15 @@ pub struct App {
     meta_txt: String,
     /// Tela do apresentador mostrando só o cronômetro (tempo de entrevista).
     so_cronometro: bool,
+    /// "Passar rápido": direção pedida neste quadro (+1 frente, -1 trás, 0 nada)
+    /// e a que vale no quadro seguinte.
+    turbo_pedido: f32,
+    turbo: f32,
+    /// O botão segurado já virou "passar rápido" (então soltar não conta como clique).
+    turbo_usado: bool,
+    /// Espelho marcado no seletor (para ver os itens antes de abrir).
+    espelho_marcado: Option<String>,
+    filtro_programa: Option<String>,
     crono_entrevista: Cronometro,
     meta_entrevista_txt: String,
 
@@ -148,6 +175,11 @@ impl App {
             crono: Cronometro::default(),
             meta_txt: String::new(),
             so_cronometro: false,
+            turbo_pedido: 0.0,
+            turbo: 0.0,
+            turbo_usado: false,
+            espelho_marcado: None,
+            filtro_programa: None,
             crono_entrevista: Cronometro::default(),
             meta_entrevista_txt: String::new(),
             predef_nome: String::new(),
@@ -401,8 +433,9 @@ impl App {
     // ------------------------------------------------------------------
 
     fn em_por_segundo(&self) -> f32 {
-        // 100 % = 5 linhas de letra por segundo (bem rápido); 10 % ≈ leitura normal.
-        self.cfg.velocidade_pct / 100.0 * VELOCIDADE_MAXIMA_EM
+        // Curva: dá controle fino nas velocidades de leitura (10–20 %) e ainda
+        // chega bem rápido em 100 %. 15 % ≈ leitura normal.
+        (self.cfg.velocidade_pct / 100.0).powf(1.5) * VELOCIDADE_MAXIMA_EM
     }
 
     fn ir_para_bloco(&mut self, i: usize) {
@@ -449,7 +482,31 @@ impl App {
     }
 
     fn mudar_velocidade(&mut self, delta: f32) {
-        self.cfg.velocidade_pct = (self.cfg.velocidade_pct + delta).clamp(0.0, 100.0);
+        self.cfg.velocidade_pct = (self.cfg.velocidade_pct + delta).clamp(0.0, 100.0).round();
+    }
+
+    /// Passo da rodinha/setas: 5 %; com Shift, ajuste fino de 1 %.
+    fn passo_velocidade(ctx: &egui::Context) -> f32 {
+        if ctx.input(|i| i.modifiers.shift) {
+            1.0
+        } else {
+            5.0
+        }
+    }
+
+    /// Botão que faz uma coisa no clique e "passa rápido" enquanto segurado.
+    /// Devolve `true` no clique curto.
+    fn botao_segurar(&mut self, ui: &mut Ui, resp: &egui::Response, direcao: f32) -> bool {
+        if resp.is_pointer_button_down_on() {
+            let segurando = ui
+                .input(|i| i.pointer.press_start_time().map(|t| i.time - t))
+                .unwrap_or(0.0);
+            if segurando > 0.3 {
+                self.turbo_pedido = direcao;
+                self.turbo_usado = true;
+            }
+        }
+        resp.clicked() && !self.turbo_usado
     }
 
     /// Mouse sobre o texto (prévia ou apresentador), no jeito do Apotec:
@@ -484,8 +541,12 @@ impl App {
                     .sum()
             });
             if passos != 0.0 {
-                self.mudar_velocidade(passos);
+                self.mudar_velocidade(passos * Self::passo_velocidade(ui.ctx()));
             }
+        }
+        // Botão direito segurado sobre o texto: passa rápido para a frente.
+        if resp.hovered() && ui.input(|i| i.pointer.secondary_down()) {
+            self.turbo_pedido = if invertido { -1.0 } else { 1.0 };
         }
         if resp.clicked_by(egui::PointerButton::Middle) {
             self.rodando = false;
@@ -539,21 +600,32 @@ impl App {
         if espaco {
             self.alternar_rolagem();
         }
-        // Setas ↑/↓ seguradas movem o texto (≈ 3 linhas por segundo).
+        // Setas ↑/↓ seguradas movem o texto (≈ 3 linhas por segundo);
+        // com Shift, passam rápido.
         let dt = ctx.input(|i| i.stable_dt).min(0.1);
+        let shift = ctx.input(|i| i.modifiers.shift);
         if cima {
-            self.rolagem_em -= 4.0 * dt;
+            if shift {
+                self.turbo_pedido = -1.0;
+            } else {
+                self.rolagem_em -= 4.0 * dt;
+            }
             ctx.request_repaint();
         }
         if baixo {
-            self.rolagem_em += 4.0 * dt;
+            if shift {
+                self.turbo_pedido = 1.0;
+            } else {
+                self.rolagem_em += 4.0 * dt;
+            }
             ctx.request_repaint();
         }
+        let passo = Self::passo_velocidade(ctx);
         if dir {
-            self.mudar_velocidade(1.0);
+            self.mudar_velocidade(passo);
         }
         if esq {
-            self.mudar_velocidade(-1.0);
+            self.mudar_velocidade(-passo);
         }
         if fim {
             self.rodando = false;
@@ -574,6 +646,13 @@ impl App {
 
     fn avancar(&mut self, ctx: &egui::Context) {
         let dt = ctx.input(|i| i.stable_dt).min(0.1);
+        if self.turbo != 0.0 {
+            self.rolagem_em += self.turbo * VELOCIDADE_TURBO_EM * dt;
+            if self.medidas.total_em > 0.0 {
+                self.rolagem_em = self.rolagem_em.min(self.medidas.total_em);
+            }
+            ctx.request_repaint();
+        }
         if self.rodando {
             self.rolagem_em += self.em_por_segundo() * dt;
             if self.medidas.total_em > 0.0 && self.rolagem_em >= self.medidas.total_em {
@@ -858,9 +937,12 @@ impl App {
                 ui.label(RichText::new("Atalhos").strong());
                 for (k, d) in [
                     ("Espaço", "rolar / pausar"),
+                    ("Segurar ⏩ / ⏪", "passa rápido para a frente / para trás"),
+                    ("Botão direito (segurar)", "passa rápido sobre o texto"),
+                    ("Shift + ↓ / ↑", "passa rápido com o teclado"),
                     ("End", "para a rolagem"),
                     ("↑ / ↓ (segurar)", "move o texto para cima / baixo"),
-                    ("→ / ←", "mais rápido / mais devagar"),
+                    ("→ / ←", "velocidade +5 % / −5 % (Shift: 1 %)"),
                     ("Home", "volta ao começo e zera o cronômetro"),
                     ("Page Up / Page Down", "lauda (bloco) anterior / próxima"),
                     ("F5", "inicia / pausa o cronômetro"),
@@ -869,7 +951,7 @@ impl App {
                     ("F7", "tela só cronômetro (liga / desliga)"),
                     ("Arrastar o texto", "rola o texto"),
                     ("Clique no texto", "rolar / parar"),
-                    ("Rodinha do mouse", "muda a velocidade"),
+                    ("Rodinha do mouse", "velocidade ±5 % (Shift: 1 %)"),
                     ("Clique na rodinha", "para a rolagem"),
                 ] {
                     ui.horizontal(|ui| {
@@ -904,221 +986,289 @@ impl App {
         });
     }
 
+    /// Bloco da barra de baixo com título pequeno, no estilo dos cartões do Sintonia.
+    fn cartao<R>(ui: &mut Ui, p: Paleta, titulo: &str, conteudo: impl FnOnce(&mut Ui) -> R) -> R {
+        egui::Frame::new()
+            .fill(p.bg)
+            .stroke(egui::Stroke::new(1.0, p.borda))
+            .corner_radius(8.0)
+            .inner_margin(egui::Margin::symmetric(10, 6))
+            .show(ui, |ui| {
+                ui.vertical(|ui| {
+                    ui.label(
+                        RichText::new(titulo.to_uppercase())
+                            .size(10.0)
+                            .color(p.texto_mais_fraco),
+                    );
+                    ui.horizontal(|ui| conteudo(ui)).inner
+                })
+                .inner
+            })
+            .inner
+    }
+
+    /// Barra de progresso do roteiro: marca o começo de cada bloco; clicar
+    /// ou arrastar nela leva o texto para aquele ponto.
+    fn barra_progresso(&mut self, ui: &mut Ui) {
+        let p = self.p();
+        let (rect, resp) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width(), 14.0),
+            Sense::click_and_drag(),
+        );
+        let trilho = Rect::from_center_size(rect.center(), Vec2::new(rect.width(), 6.0));
+        let total = self.medidas.total_em.max(0.001);
+        let fracao = (self.rolagem_em / total).clamp(0.0, 1.0);
+        let painter = ui.painter();
+        painter.rect_filled(trilho, 3.0, p.panel_2);
+        let mut feito = trilho;
+        feito.max.x = trilho.left() + trilho.width() * fracao;
+        painter.rect_filled(feito, 3.0, p.vermelho);
+        for (i, topo) in self.medidas.topos_em.iter().enumerate() {
+            let x = trilho.left() + trilho.width() * (topo / total).clamp(0.0, 1.0);
+            let intervalo = self
+                .roteiro
+                .segmentos
+                .get(i)
+                .is_some_and(|s| s.tipo == Tipo::Intervalo);
+            painter.line_segment(
+                [egui::pos2(x, rect.top()), egui::pos2(x, rect.bottom())],
+                egui::Stroke::new(
+                    if intervalo { 2.0 } else { 1.0 },
+                    if intervalo {
+                        p.ambar
+                    } else {
+                        p.texto_mais_fraco
+                    },
+                ),
+            );
+        }
+        painter.circle_filled(
+            egui::pos2(feito.right(), trilho.center().y),
+            6.0,
+            p.vermelho,
+        );
+        if let Some(pos) = resp.interact_pointer_pos()
+            && (resp.clicked() || resp.dragged())
+        {
+            let f = ((pos.x - trilho.left()) / trilho.width()).clamp(0.0, 1.0);
+            self.rolagem_em = f * total;
+        }
+        if let Some(pos) = resp.hover_pos() {
+            let f = ((pos.x - trilho.left()) / trilho.width()).clamp(0.0, 1.0);
+            if let Some(seg) = self
+                .medidas
+                .bloco_atual(f * total)
+                .and_then(|i| self.roteiro.segmentos.get(i))
+            {
+                resp.on_hover_text(format!(
+                    "{} — clique para ir",
+                    if seg.titulo.is_empty() {
+                        "(sem título)"
+                    } else {
+                        &seg.titulo
+                    }
+                ));
+            }
+        }
+    }
+
     fn painel_transporte(&mut self, ui: &mut Ui) {
         let p = self.p();
+        let mono = |t: String, tam: f32, c: Color32| {
+            RichText::new(t).font(FontId::monospace(tam)).color(c)
+        };
+        let rotulo = |t: &str| {
+            RichText::new(t.to_uppercase())
+                .size(10.0)
+                .color(p.texto_mais_fraco)
+        };
+        let cor_resta = |resta: i64| {
+            if resta < 0 {
+                p.vermelho
+            } else if resta <= 60 {
+                p.ambar
+            } else {
+                p.verde
+            }
+        };
+
+        self.barra_progresso(ui);
         ui.add_space(6.0);
+        // Linha 1: rolagem, velocidade e relógio.
         ui.horizontal(|ui| {
-            let grande = |t: &str| RichText::new(t).size(18.0);
-            if ui
-                .button(grande("⏮"))
-                .on_hover_text("Começo — zera o cronômetro (Home)")
-                .clicked()
-            {
-                self.ir_inicio();
-            }
-            if ui
-                .button(grande("⏪"))
-                .on_hover_text("Bloco anterior (Page Up)")
-                .clicked()
-            {
-                self.bloco_relativo(-1);
-            }
-            // Botão principal no vermelho do Sintonia (.btn-primary); pausado vira âmbar.
-            let (txt, cor_btn) = if self.rodando {
-                ("⏸  Pausar", p.ambar)
-            } else {
-                ("▶  Rolar", p.vermelho)
-            };
-            if ui
-                .add(
-                    egui::Button::new(
-                        RichText::new(txt)
-                            .font(theme::forte(17.0))
-                            .color(Color32::WHITE),
+            ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+
+            // ROLAGEM
+            Self::cartao(ui, p, "Rolagem", |ui| {
+                let grande = |t: &str| RichText::new(t).size(17.0);
+                if ui.button(grande("⏮")).on_hover_text("Começo — zera o cronômetro (Home)").clicked() {
+                    self.ir_inicio();
+                }
+                let r = ui.button(grande("⏪")).on_hover_text("Clique: bloco anterior (Page Up)\nSegure: volta rápido");
+                if self.botao_segurar(ui, &r, -1.0) {
+                    self.bloco_relativo(-1);
+                }
+                let (txt, cor_btn) = if self.rodando { ("⏸  Pausar", p.ambar) } else { ("▶  Rolar", p.vermelho) };
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new(txt).font(theme::forte(17.0)).color(Color32::WHITE))
+                            .fill(cor_btn)
+                            .min_size(Vec2::new(128.0, 34.0)),
                     )
-                    .fill(cor_btn)
-                    .min_size(Vec2::new(130.0, 34.0)),
+                    .on_hover_text("Espaço ou clique no texto (End para)")
+                    .clicked()
+                {
+                    self.alternar_rolagem();
+                }
+                let r = ui.button(grande("⏩")).on_hover_text("Clique: próximo bloco (Page Down)\nSegure: passa rápido");
+                if self.botao_segurar(ui, &r, 1.0) {
+                    self.bloco_relativo(1);
+                }
+            });
+
+            // VELOCIDADE
+            Self::cartao(ui, p, "Velocidade", |ui| {
+                ui.spacing_mut().slider_width = 150.0;
+                ui.add(
+                    egui::Slider::new(&mut self.cfg.velocidade_pct, 0.0..=100.0)
+                        .step_by(1.0)
+                        .fixed_decimals(0)
+                        .suffix(" %"),
                 )
-                .on_hover_text("Espaço (End para)")
-                .clicked()
-            {
-                self.alternar_rolagem();
-            }
-            if ui
-                .button(grande("⏩"))
-                .on_hover_text("Próximo bloco (Page Down)")
-                .clicked()
-            {
-                self.bloco_relativo(1);
-            }
-            ui.separator();
-            ui.label(RichText::new("Velocidade").color(p.texto_fraco))
-                .on_hover_text("De 0 a 100 %. → / ← ou rodinha do mouse: 1 % por vez");
-            ui.add(
-                egui::Slider::new(&mut self.cfg.velocidade_pct, 0.0..=100.0)
-                    .step_by(1.0)
-                    .fixed_decimals(0)
-                    .suffix(" %"),
-            );
-            ui.separator();
-            let progresso = if self.medidas.total_em > 0.0 {
-                self.rolagem_em / self.medidas.total_em
-            } else {
-                0.0
-            };
-            ui.add(
-                egui::ProgressBar::new(progresso.clamp(0.0, 1.0))
-                    .desired_width(140.0)
-                    .show_percentage(),
-            );
-        });
-        ui.add_space(2.0);
-        ui.horizontal(|ui| {
-            let mono =
-                |t: String, c: Color32| RichText::new(t).font(FontId::monospace(24.0)).color(c);
-            let rotulo = |t: &str| {
-                RichText::new(t.to_uppercase())
-                    .size(10.5)
-                    .color(p.texto_mais_fraco)
-            };
-            ui.label(rotulo("Cronômetro"));
-            let decorrido = self.crono.decorrido().as_secs() as i64;
-            ui.label(mono(fmt_tempo(decorrido), p.texto));
-            let (t, dica) = if self.crono.rodando() {
-                ("⏸", "Pausar (F5)")
-            } else {
-                ("▶", "Iniciar (F5)")
-            };
-            if ui
-                .button(RichText::new(t).size(18.0))
-                .on_hover_text(dica)
-                .clicked()
-            {
-                self.crono.alternar();
-            }
-            if ui
-                .button(RichText::new("↺").size(18.0))
-                .on_hover_text("Zerar")
-                .clicked()
-            {
-                self.crono.zerar();
-            }
-            ui.checkbox(
-                &mut self.cfg.mostrar_relogio_apresentador,
-                "Mostrar ao apresentador",
-            )
-            .on_hover_text("Exibe (ou oculta) o cronômetro no canto da tela do apresentador");
-            ui.separator();
-            ui.label(rotulo("Tempo do programa"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.meta_txt)
-                    .hint_text("mm:ss")
-                    .desired_width(64.0),
-            );
-            if let Some(meta) = self.meta_seg() {
-                let resta = meta - decorrido;
-                let c = if resta < 0 {
-                    p.vermelho
-                } else if resta <= 60 {
-                    p.ambar
-                } else {
-                    p.verde
-                };
-                ui.label(rotulo("Falta"));
-                ui.label(mono(fmt_tempo(resta), c));
-            }
-            ui.separator();
-            ui.label(rotulo("Leitura (estimada)"));
-            ui.label(mono(fmt_tempo(self.leitura_restante()), p.azul))
-                .on_hover_text(format!(
-                    "{} palavras a {} palavras/min",
-                    self.roteiro.palavras(),
-                    self.cfg.palavras_por_minuto
-                ));
+                .on_hover_text("→ / ← ou rodinha do mouse: 5 % por vez (com Shift, 1 %)");
+                for (nome, v) in VELOCIDADES_PRONTAS {
+                    let ativo = (self.cfg.velocidade_pct - v).abs() < 0.5;
+                    if ui.selectable_label(ativo, nome).on_hover_text(format!("{v:.0} %")).clicked() {
+                        self.cfg.velocidade_pct = v;
+                    }
+                }
+                ui.label(RichText::new("ⓘ").color(p.texto_mais_fraco)).on_hover_text(
+                    "Para passar rápido, segure ⏩ (ou ⏪ para voltar),\no botão direito do mouse sobre o texto, ou Shift + ↓ / ↑.",
+                );
+            });
+
+            // AGORA (à direita)
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.label(mono(
-                    chrono::Local::now().format("%H:%M:%S").to_string(),
-                    p.texto,
-                ));
-                ui.label(rotulo("Agora"));
+                Self::cartao(ui, p, "Agora · leitura", |ui| {
+                    ui.label(mono(chrono::Local::now().format("%H:%M:%S").to_string(), 22.0, p.texto));
+                    ui.label(mono(fmt_tempo(self.leitura_restante()), 16.0, p.azul)).on_hover_text(format!(
+                        "Leitura que falta (estimada): {} palavras a {} palavras/min",
+                        self.roteiro.palavras(),
+                        self.cfg.palavras_por_minuto
+                    ));
+                });
+            });
+        });
+        ui.add_space(6.0);
+        // Linha 2: cronômetros.
+        ui.horizontal(|ui| {
+            ui.spacing_mut().item_spacing = Vec2::new(8.0, 8.0);
+            // PROGRAMA
+            Self::cartao(ui, p, "Programa", |ui| {
+                let decorrido = self.crono.decorrido().as_secs() as i64;
+                ui.label(mono(fmt_tempo(decorrido), 22.0, p.texto))
+                    .on_hover_text("Cronômetro do programa");
+                let (t, dica) = if self.crono.rodando() {
+                    ("⏸", "Pausar (F5)")
+                } else {
+                    ("▶", "Iniciar (F5)")
+                };
+                if ui
+                    .button(RichText::new(t).size(15.0))
+                    .on_hover_text(dica)
+                    .clicked()
+                {
+                    self.crono.alternar();
+                }
+                if ui
+                    .button(RichText::new("↺").size(15.0))
+                    .on_hover_text("Zerar")
+                    .clicked()
+                {
+                    self.crono.zerar();
+                }
+                ui.label(rotulo("Tempo"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.meta_txt)
+                        .hint_text("mm:ss")
+                        .desired_width(62.0),
+                )
+                .on_hover_text("Duração do programa (vazio = cronômetro só rodando)");
+                if let Some(meta) = self.meta_seg() {
+                    let resta = meta - decorrido;
+                    ui.label(rotulo(if resta < 0 { "Estourou" } else { "Falta" }));
+                    ui.label(mono(fmt_tempo(resta), 22.0, cor_resta(resta)));
+                }
+                ui.checkbox(
+                    &mut self.cfg.mostrar_relogio_apresentador,
+                    "No apresentador",
+                )
+                .on_hover_text(
+                    "Exibe (ou oculta) este cronômetro no canto da tela do apresentador",
+                );
+            });
+
+            // ENTREVISTA
+            Self::cartao(ui, p, "Entrevista", |ui| {
+                let (txt, fundo, cor_txt) = if self.so_cronometro {
+                    ("⏱  Voltar ao texto", p.vermelho, Color32::WHITE)
+                } else {
+                    ("⏱  Só cronômetro", p.panel, p.texto)
+                };
+                if ui
+                    .add(
+                        egui::Button::new(
+                            RichText::new(txt).font(theme::forte(13.5)).color(cor_txt),
+                        )
+                        .fill(fundo),
+                    )
+                    .on_hover_text("Troca o texto do apresentador por um cronômetro grande (F7)")
+                    .clicked()
+                {
+                    self.alternar_so_cronometro();
+                }
+                let decorrido = self.crono_entrevista.decorrido().as_secs() as i64;
+                match self.meta_entrevista_seg() {
+                    Some(meta) => ui.label(mono(
+                        fmt_tempo(meta - decorrido),
+                        22.0,
+                        cor_resta(meta - decorrido),
+                    )),
+                    None => ui.label(mono(fmt_tempo(decorrido), 22.0, p.texto)),
+                };
+                let (t, dica) = if self.crono_entrevista.rodando() {
+                    ("⏸", "Pausar (F6)")
+                } else {
+                    ("▶", "Iniciar (F6)")
+                };
+                if ui
+                    .button(RichText::new(t).size(15.0))
+                    .on_hover_text(dica)
+                    .clicked()
+                {
+                    self.crono_entrevista.alternar();
+                }
+                if ui
+                    .button(RichText::new("↺").size(15.0))
+                    .on_hover_text("Zerar")
+                    .clicked()
+                {
+                    self.crono_entrevista.zerar();
+                }
+                ui.selectable_value(&mut self.cfg.entrevista_com_tempo, false, "Só rodando")
+                    .on_hover_text("Conta para cima, sem limite");
+                ui.selectable_value(&mut self.cfg.entrevista_com_tempo, true, "Com tempo")
+                    .on_hover_text("Regressivo a partir da duração; pisca quando estoura");
+                if self.cfg.entrevista_com_tempo {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.meta_entrevista_txt)
+                            .hint_text("mm:ss")
+                            .desired_width(62.0),
+                    );
+                }
             });
         });
         ui.add_space(2.0);
-        // Entrevista: cronômetro próprio e a tela "só cronômetro" do apresentador.
-        ui.horizontal(|ui| {
-            let mono =
-                |t: String, c: Color32| RichText::new(t).font(FontId::monospace(20.0)).color(c);
-            let rotulo = |t: &str| {
-                RichText::new(t.to_uppercase())
-                    .size(10.5)
-                    .color(p.texto_mais_fraco)
-            };
-            let (txt, fundo, cor_txt) = if self.so_cronometro {
-                ("⏱  Voltar ao texto", p.vermelho, Color32::WHITE)
-            } else {
-                ("⏱  Tela só cronômetro", p.panel_2, p.texto)
-            };
-            if ui
-                .add(
-                    egui::Button::new(RichText::new(txt).font(theme::forte(13.5)).color(cor_txt))
-                        .fill(fundo),
-                )
-                .on_hover_text(
-                    "Troca o texto do apresentador por um cronômetro grande no meio da tela (F7)",
-                )
-                .clicked()
-            {
-                self.alternar_so_cronometro();
-            }
-            ui.label(rotulo("Entrevista"));
-            let decorrido = self.crono_entrevista.decorrido().as_secs() as i64;
-            ui.label(mono(fmt_tempo(decorrido), p.texto));
-            let (t, dica) = if self.crono_entrevista.rodando() {
-                ("⏸", "Pausar (F6)")
-            } else {
-                ("▶", "Iniciar (F6)")
-            };
-            if ui
-                .button(RichText::new(t).size(16.0))
-                .on_hover_text(dica)
-                .clicked()
-            {
-                self.crono_entrevista.alternar();
-            }
-            if ui
-                .button(RichText::new("↺").size(16.0))
-                .on_hover_text("Zerar")
-                .clicked()
-            {
-                self.crono_entrevista.zerar();
-            }
-            // Dois jeitos: só rodando (conta para cima) ou com tempo (regressivo).
-            ui.selectable_value(&mut self.cfg.entrevista_com_tempo, false, "Só rodando")
-                .on_hover_text("Conta para cima, sem limite de tempo");
-            ui.selectable_value(&mut self.cfg.entrevista_com_tempo, true, "Com tempo")
-                .on_hover_text("Contagem regressiva a partir da duração");
-            if self.cfg.entrevista_com_tempo {
-                ui.label(rotulo("Duração"));
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.meta_entrevista_txt)
-                        .hint_text("mm:ss")
-                        .desired_width(64.0),
-                );
-            }
-            if let Some(meta) = self.meta_entrevista_seg() {
-                let resta = meta - decorrido;
-                let c = if resta < 0 {
-                    p.vermelho
-                } else if resta <= 60 {
-                    p.ambar
-                } else {
-                    p.verde
-                };
-                ui.label(rotulo("Falta"));
-                ui.label(mono(fmt_tempo(resta), c));
-            }
-        });
-        ui.add_space(4.0);
     }
 
     fn painel_roteiro(&mut self, ui: &mut Ui) {
@@ -1787,6 +1937,12 @@ impl App {
         });
     }
 
+    /// Liga/desliga duas vezes por segundo (tela piscando quando o tempo estoura).
+    fn piscando(ui: &Ui) -> bool {
+        ui.ctx().request_repaint_after(Duration::from_millis(100));
+        (ui.input(|i| i.time) * 2.0) as i64 % 2 == 0
+    }
+
     fn relogio_apresentador(&self, ui: &Ui, rect: Rect, espelho: Espelho) {
         let decorrido = self.crono.decorrido().as_secs() as i64;
         let (txt, c) = match self.meta_seg() {
@@ -1811,11 +1967,16 @@ impl App {
         let fundo = Rect::from_min_size(pos, galley.size()).expand(tamanho * 0.2);
         let a = espelho.ponto(fundo.min);
         let b = espelho.ponto(fundo.max);
-        painter.rect_filled(
-            Rect::from_two_pos(a, b),
-            6.0,
-            Color32::from_black_alpha(170),
-        );
+        // Estourou: a caixa do relógio pisca em vermelho.
+        let estourou = self.meta_seg().is_some_and(|m| m - decorrido < 0);
+        let (fundo_cor, c) = if estourou && Self::piscando(ui) {
+            (theme::ESCURO.vermelho, Color32::WHITE)
+        } else {
+            (Color32::from_black_alpha(170), c)
+        };
+        painter.rect_filled(Rect::from_two_pos(a, b), 6.0, fundo_cor);
+        let galley =
+            painter.layout_no_wrap(galley.text().to_string(), FontId::monospace(tamanho), c);
         espelho.texto(ui, &painter, pos, galley, c);
     }
 
@@ -1830,9 +1991,22 @@ impl App {
     /// para o apresentador acompanhar o tempo de uma entrevista.
     fn desenhar_so_cronometro(&self, ui: &Ui, rect: Rect, espelho: Espelho) {
         let painter = ui.painter_at(rect);
-        painter.rect_filled(rect, 0.0, cor(self.cfg.cor_fundo));
         let p = theme::ESCURO;
         let decorrido = self.crono_entrevista.decorrido().as_secs() as i64;
+        // Estourou o tempo: a tela inteira pisca em vermelho.
+        let estourou = self
+            .meta_entrevista_seg()
+            .is_some_and(|m| m - decorrido < 0);
+        let aceso = estourou && Self::piscando(ui);
+        painter.rect_filled(
+            rect,
+            0.0,
+            if aceso {
+                p.vermelho
+            } else {
+                cor(self.cfg.cor_fundo)
+            },
+        );
         let (grande, cor_grande, detalhe) = match self.meta_entrevista_seg() {
             Some(meta) => {
                 let resta = meta - decorrido;
@@ -1848,7 +2022,12 @@ impl App {
                 } else {
                     format!("FALTAM · DE {}", fmt_tempo(meta))
                 };
-                (fmt_tempo(resta.abs()), c, det)
+                let grande = if resta < 0 {
+                    format!("+{}", fmt_tempo(-resta))
+                } else {
+                    fmt_tempo(resta)
+                };
+                (grande, c, det)
             }
             None => (
                 fmt_tempo(decorrido),
@@ -1874,7 +2053,21 @@ impl App {
             rect.center().x - g_grande.size().x / 2.0,
             topo + g_det.size().y,
         );
-        let (cd, cg) = (cor(self.cfg.cor_titulo), cor_grande);
+        let (cd, cg) = if aceso {
+            (Color32::WHITE, Color32::WHITE)
+        } else {
+            (cor(self.cfg.cor_titulo), cor_grande)
+        };
+        let g_grande = painter.layout_no_wrap(
+            g_grande.text().to_string(),
+            g_grande.job.sections[0].format.font_id.clone(),
+            cg,
+        );
+        let g_det = painter.layout_no_wrap(
+            g_det.text().to_string(),
+            g_det.job.sections[0].format.font_id.clone(),
+            cd,
+        );
         espelho.texto(ui, &painter, pos_det, g_det, cd);
         espelho.texto(ui, &painter, pos_grande, g_grande, cg);
         if self.crono_entrevista.rodando() {
@@ -1882,85 +2075,420 @@ impl App {
         }
     }
 
+    /// Escolha do espelho: navega por dia (◀ ▶), filtra por programa e mostra
+    /// os itens do espelho marcado antes de abrir.
     fn seletor_espelho(&mut self, ctx: &egui::Context) {
         if !self.seletor_aberto {
             return;
         }
-        let mut aberto = true;
-        let mut escolhido: Option<Value> = None;
-        egui::Window::new("Abrir espelho do Sintonia")
-            .open(&mut aberto)
-            .default_size([720.0, 460.0])
-            .collapsible(false)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.label("Data");
-                    ui.add(egui::TextEdit::singleline(&mut self.filtro_data).hint_text("aaaa-mm-dd").desired_width(100.0));
-                    if ui.button("Hoje").clicked() {
-                        self.filtro_data = hoje();
+        let p = self.p();
+        let data = chrono::NaiveDate::parse_from_str(self.filtro_data.trim(), "%Y-%m-%d")
+            .unwrap_or_else(|_| chrono::Local::now().date_naive());
+        let hoje_d = chrono::Local::now().date_naive();
+        let busca = self.filtro_busca.to_lowercase();
+        let iso = data.format("%Y-%m-%d").to_string();
+
+        // Espelhos do dia (todos os programas), para os filtros.
+        let do_dia: Vec<(EspelhoResumo, &Value)> = self
+            .espelhos
+            .iter()
+            .map(|v| (EspelhoResumo::de(v), v))
+            .filter(|(r, _)| r.data == iso)
+            .collect();
+        let mut programas: Vec<String> = do_dia.iter().map(|(r, _)| r.programa.clone()).collect();
+        programas.sort();
+        programas.dedup();
+        let mut lista: Vec<(EspelhoResumo, Value)> = do_dia
+            .iter()
+            .filter(|(r, _)| {
+                self.filtro_programa
+                    .as_ref()
+                    .is_none_or(|f| &r.programa == f)
+            })
+            .filter(|(r, _)| {
+                busca.is_empty()
+                    || r.titulo.to_lowercase().contains(&busca)
+                    || r.programa.to_lowercase().contains(&busca)
+            })
+            .map(|(r, v)| (r.clone(), (*v).clone()))
+            .collect();
+        // Na ordem em que vão ao ar.
+        lista.sort_by(|a, b| a.0.horario.cmp(&b.0.horario));
+        if self
+            .espelho_marcado
+            .as_ref()
+            .is_none_or(|id| !lista.iter().any(|(r, _)| &r.id == id))
+        {
+            self.espelho_marcado = lista.first().map(|(r, _)| r.id.clone());
+        }
+
+        let mut abrir: Option<Value> = None;
+        let mut mudar_dia: Option<chrono::NaiveDate> = None;
+        let mut fechar = false;
+        let tela = ctx.content_rect();
+        let tam = Vec2::new(
+            (tela.width() - 80.0).clamp(560.0, 980.0),
+            (tela.height() - 100.0).clamp(380.0, 620.0),
+        );
+        let resp = egui::Modal::new(egui::Id::unique("sintonia-seletor-espelho")).show(ctx, |ui| {
+            ui.set_width(tam.x);
+            ui.set_max_width(tam.x);
+            ui.set_height(tam.y);
+            // Cabeçalho
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new("Abrir espelho")
+                        .font(theme::titulo(20.0))
+                        .color(p.texto),
+                );
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui.button("✕").on_hover_text("Fechar (Esc)").clicked() {
+                        fechar = true;
                     }
-                    if ui.button("Todas").clicked() {
-                        self.filtro_data.clear();
+                    if ui
+                        .button("⟳ Atualizar")
+                        .on_hover_text("Buscar de novo no Sintonia")
+                        .clicked()
+                    {
+                        self.api.enviar(Comando::ListarEspelhos);
                     }
-                    ui.separator();
-                    ui.add(egui::TextEdit::singleline(&mut self.filtro_busca).hint_text("🔍 programa ou título").desired_width(200.0));
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("⟳ Atualizar").clicked() {
-                            self.api.enviar(Comando::ListarEspelhos);
-                        }
-                        if self.api.ocupado {
-                            ui.spinner();
-                        }
-                    });
-                });
-                ui.separator();
-                let busca = self.filtro_busca.to_lowercase();
-                let lista: Vec<(EspelhoResumo, &Value)> = self
-                    .espelhos
-                    .iter()
-                    .map(|v| (EspelhoResumo::de(v), v))
-                    .filter(|(r, _)| self.filtro_data.trim().is_empty() || r.data == self.filtro_data.trim())
-                    .filter(|(r, _)| busca.is_empty() || r.titulo.to_lowercase().contains(&busca) || r.programa.to_lowercase().contains(&busca))
-                    .collect();
-                if lista.is_empty() {
-                    ui.add_space(20.0);
-                    ui.vertical_centered(|ui| {
-                        let msg = if self.espelhos.is_empty() {
-                            "Nenhum espelho carregado."
-                        } else if self.filtro_data.is_empty() {
-                            "Nenhum espelho encontrado."
-                        } else {
-                            "Nenhum espelho nessa data. Clique em \"Todas\" para ver os outros dias."
-                        };
-                        ui.label(RichText::new(msg).weak());
-                    });
-                    return;
-                }
-                ScrollArea::vertical().show(ui, |ui| {
-                    egui::Grid::new("espelhos").striped(true).num_columns(5).spacing([14.0, 8.0]).show(ui, |ui| {
-                        ui.label(RichText::new("Data").strong());
-                        ui.label(RichText::new("Programa").strong());
-                        ui.label(RichText::new("Título").strong());
-                        ui.label(RichText::new("Itens").strong());
-                        ui.label("");
-                        ui.end_row();
-                        for (r, v) in lista {
-                            ui.label(format!("{} {}", data_br(&r.data), r.horario));
-                            ui.label(&r.programa);
-                            ui.label(&r.titulo);
-                            ui.label(r.itens.to_string());
-                            if ui.button("Abrir").clicked() {
-                                escolhido = Some(v.clone());
-                            }
-                            ui.end_row();
-                        }
-                    });
+                    if self.api.ocupado {
+                        ui.spinner();
+                    }
                 });
             });
-        if !aberto {
+            ui.add_space(6.0);
+            // Navegação por dia
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("◀").size(16.0))
+                            .min_size(Vec2::splat(32.0)),
+                    )
+                    .on_hover_text("Dia anterior")
+                    .clicked()
+                {
+                    mudar_dia = data.pred_opt();
+                }
+                let dia_semana =
+                    DIAS_SEMANA[data.format("%u").to_string().parse::<usize>().unwrap_or(1) - 1];
+                let rel = match (data - hoje_d).num_days() {
+                    0 => " · hoje",
+                    1 => " · amanhã",
+                    -1 => " · ontem",
+                    _ => "",
+                };
+                ui.label(
+                    RichText::new(format!("{dia_semana}, {}{rel}", data.format("%d/%m/%Y")))
+                        .font(theme::forte(16.0))
+                        .color(p.texto),
+                );
+                if ui
+                    .add(
+                        egui::Button::new(RichText::new("▶").size(16.0))
+                            .min_size(Vec2::splat(32.0)),
+                    )
+                    .on_hover_text("Próximo dia")
+                    .clicked()
+                {
+                    mudar_dia = data.succ_opt();
+                }
+                ui.add_space(8.0);
+                if ui.selectable_label(data == hoje_d, "Hoje").clicked() {
+                    mudar_dia = Some(hoje_d);
+                }
+                if ui
+                    .selectable_label(Some(data) == hoje_d.succ_opt(), "Amanhã")
+                    .clicked()
+                {
+                    mudar_dia = hoje_d.succ_opt();
+                }
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    ui.add(
+                        egui::TextEdit::singleline(&mut self.filtro_busca)
+                            .hint_text("🔍 procurar")
+                            .desired_width(180.0),
+                    );
+                });
+            });
+            // Programas do dia
+            if programas.len() > 1 {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        RichText::new("PROGRAMA")
+                            .size(10.0)
+                            .color(p.texto_mais_fraco),
+                    );
+                    if ui
+                        .selectable_label(self.filtro_programa.is_none(), "Todos")
+                        .clicked()
+                    {
+                        self.filtro_programa = None;
+                    }
+                    for prog in &programas {
+                        let ativo = self.filtro_programa.as_ref() == Some(prog);
+                        if ui.selectable_label(ativo, prog).clicked() {
+                            self.filtro_programa = if ativo { None } else { Some(prog.clone()) };
+                        }
+                    }
+                });
+            }
+            ui.separator();
+
+            if lista.is_empty() {
+                ui.add_space(30.0);
+                ui.vertical_centered(|ui| {
+                    let msg = if self.espelhos.is_empty() {
+                        "Nenhum espelho carregado do Sintonia."
+                    } else {
+                        "Nenhum espelho neste dia."
+                    };
+                    ui.label(RichText::new(msg).size(16.0).color(p.texto_fraco));
+                    // Atalhos para os dias mais próximos que têm espelho.
+                    let mut dias: Vec<chrono::NaiveDate> = self
+                        .espelhos
+                        .iter()
+                        .filter_map(|v| v["data"].as_str())
+                        .filter_map(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok())
+                        .collect();
+                    dias.sort_by_key(|d| ((*d - data).num_days().abs(), *d));
+                    dias.dedup();
+                    if !dias.is_empty() {
+                        ui.add_space(10.0);
+                        ui.label(RichText::new("Dias com espelho:").color(p.texto_mais_fraco));
+                        ui.horizontal_wrapped(|ui| {
+                            for d in dias.iter().take(8) {
+                                let n = self
+                                    .espelhos
+                                    .iter()
+                                    .filter(|v| {
+                                        v["data"].as_str()
+                                            == Some(&d.format("%Y-%m-%d").to_string())
+                                    })
+                                    .count();
+                                if ui.button(format!("{} ({n})", d.format("%d/%m"))).clicked() {
+                                    mudar_dia = Some(*d);
+                                }
+                            }
+                        });
+                    }
+                });
+                return;
+            }
+
+            // Lista (esquerda) + itens do marcado (direita)
+            let altura = ui.available_height() - 4.0;
+            ui.horizontal_top(|ui| {
+                let largura_lista = (ui.available_width() * 0.45).max(260.0);
+                ui.allocate_ui_with_layout(
+                    Vec2::new(largura_lista, altura),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        ScrollArea::vertical()
+                            .id_salt("lista-espelhos")
+                            .show(ui, |ui| {
+                                for (r, v) in &lista {
+                                    let marcado = self.espelho_marcado.as_ref() == Some(&r.id);
+                                    let roteiro = Roteiro::do_espelho(v);
+                                    let dur = roteiro.duracao_total();
+                                    let resp = egui::Frame::new()
+                                        .fill(if marcado { p.panel_2 } else { p.panel })
+                                        .stroke(egui::Stroke::new(
+                                            1.0,
+                                            if marcado { p.vermelho } else { p.borda },
+                                        ))
+                                        .corner_radius(8.0)
+                                        .inner_margin(10.0)
+                                        .show(ui, |ui| {
+                                            ui.set_width(largura_lista - 28.0);
+                                            ui.horizontal(|ui| {
+                                                ui.label(
+                                                    RichText::new(if r.horario.is_empty() {
+                                                        "--:--".into()
+                                                    } else {
+                                                        r.horario.clone()
+                                                    })
+                                                    .font(FontId::monospace(18.0))
+                                                    .color(p.ambar),
+                                                );
+                                                ui.vertical(|ui| {
+                                                    ui.label(
+                                                        RichText::new(if r.programa.is_empty() {
+                                                            "Sem programa"
+                                                        } else {
+                                                            &r.programa
+                                                        })
+                                                        .font(theme::forte(14.5))
+                                                        .color(p.texto),
+                                                    );
+                                                    ui.label(
+                                                        RichText::new(&r.titulo)
+                                                            .size(12.0)
+                                                            .color(p.texto_fraco),
+                                                    );
+                                                    ui.label(
+                                                        RichText::new(format!(
+                                                            "{} itens{}",
+                                                            r.itens,
+                                                            if dur > 0 {
+                                                                format!(" · {}", fmt_tempo(dur))
+                                                            } else {
+                                                                String::new()
+                                                            }
+                                                        ))
+                                                        .size(11.5)
+                                                        .color(p.texto_mais_fraco),
+                                                    );
+                                                });
+                                            });
+                                        })
+                                        .response
+                                        .interact(Sense::click());
+                                    if resp.clicked() {
+                                        self.espelho_marcado = Some(r.id.clone());
+                                    }
+                                    if resp.double_clicked() {
+                                        abrir = Some(v.clone());
+                                    }
+                                    resp.on_hover_text(
+                                        "Clique para ver os itens · duplo clique abre",
+                                    );
+                                    ui.add_space(6.0);
+                                }
+                            });
+                    },
+                );
+                ui.separator();
+                // Prévia do espelho marcado
+                let marcado = lista
+                    .iter()
+                    .find(|(r, _)| self.espelho_marcado.as_ref() == Some(&r.id));
+                ui.allocate_ui_with_layout(
+                    Vec2::new(ui.available_width(), altura),
+                    Layout::top_down(Align::Min),
+                    |ui| {
+                        let Some((r, v)) = marcado else { return };
+                        let roteiro = Roteiro::do_espelho(v);
+                        ui.label(
+                            RichText::new(if r.programa.is_empty() {
+                                &r.titulo
+                            } else {
+                                &r.programa
+                            })
+                            .font(theme::titulo(18.0))
+                            .color(p.texto),
+                        );
+                        ui.label(
+                            RichText::new(format!(
+                                "{} · {} · {}",
+                                r.data_br(),
+                                if r.horario.is_empty() {
+                                    "sem horário"
+                                } else {
+                                    &r.horario
+                                },
+                                fmt_tempo(roteiro.duracao_total())
+                            ))
+                            .color(p.texto_fraco),
+                        );
+                        if let Some(quem) = v["alteradoPorNome"].as_str().filter(|q| !q.is_empty())
+                        {
+                            let quando = v["alteradoEm"]
+                                .as_str()
+                                .and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok())
+                                .map(|t| {
+                                    t.with_timezone(&chrono::Local)
+                                        .format(" em %d/%m às %H:%M")
+                                        .to_string()
+                                })
+                                .unwrap_or_default();
+                            ui.label(
+                                RichText::new(format!("Última alteração: {quem}{quando}"))
+                                    .size(11.5)
+                                    .color(p.texto_mais_fraco),
+                            );
+                        }
+                        ui.add_space(6.0);
+                        let altura_itens = ui.available_height() - 48.0;
+                        ScrollArea::vertical()
+                            .id_salt("itens-espelho")
+                            .max_height(altura_itens)
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for (i, seg) in roteiro.segmentos.iter().enumerate() {
+                                    ui.horizontal(|ui| {
+                                        let (icone, c) = match seg.tipo {
+                                            Tipo::Intervalo => ("📺", p.ambar),
+                                            Tipo::Entrevistado => ("🎤", p.texto),
+                                            Tipo::Materia => ("📰", p.texto),
+                                            _ => ("📝", p.texto),
+                                        };
+                                        ui.label(
+                                            RichText::new(format!("{:>2}", i + 1))
+                                                .font(FontId::monospace(12.0))
+                                                .color(p.texto_mais_fraco),
+                                        );
+                                        ui.label(
+                                            RichText::new(format!(
+                                                "{icone}  {}",
+                                                if seg.titulo.is_empty() {
+                                                    "(sem título)"
+                                                } else {
+                                                    &seg.titulo
+                                                }
+                                            ))
+                                            .color(c),
+                                        );
+                                        ui.with_layout(
+                                            Layout::right_to_left(Align::Center),
+                                            |ui| {
+                                                ui.label(
+                                                    RichText::new(seg.duracao.trim())
+                                                        .font(FontId::monospace(12.0))
+                                                        .color(p.texto_mais_fraco),
+                                                );
+                                                if seg.tipo != Tipo::Intervalo
+                                                    && seg.texto.trim().is_empty()
+                                                {
+                                                    ui.label(
+                                                        RichText::new("sem texto")
+                                                            .size(11.0)
+                                                            .color(p.ambar),
+                                                    );
+                                                }
+                                            },
+                                        );
+                                    });
+                                }
+                            });
+                        ui.add_space(6.0);
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    RichText::new("Abrir no teleprompter")
+                                        .font(theme::forte(15.0))
+                                        .color(Color32::WHITE),
+                                )
+                                .fill(p.vermelho)
+                                .min_size(Vec2::new(ui.available_width(), 36.0)),
+                            )
+                            .clicked()
+                        {
+                            abrir = Some(v.clone());
+                        }
+                    },
+                );
+            });
+        });
+        if resp.should_close() || fechar {
             self.seletor_aberto = false;
         }
-        if let Some(esp) = escolhido {
+        if let Some(d) = mudar_dia {
+            self.filtro_data = d.format("%Y-%m-%d").to_string();
+            self.filtro_programa = None;
+            self.espelho_marcado = None;
+        }
+        if let Some(esp) = abrir {
             self.seletor_aberto = false;
             self.pedir(Pendente::AbrirEspelho(esp));
         }
@@ -2074,6 +2602,13 @@ impl App {
 impl eframe::App for App {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.fontes.quadro += 1;
+        // "Passar rápido" vale enquanto alguém segura o botão/tecla: o pedido do
+        // quadro anterior vira o efeito deste.
+        self.turbo = self.turbo_pedido;
+        self.turbo_pedido = 0.0;
+        if ui.input(|i| !i.pointer.any_down() && !i.pointer.any_released()) {
+            self.turbo_usado = false;
+        }
         self.processar_respostas();
         match self.tela {
             Tela::Login => {

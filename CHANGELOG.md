@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0 — 2026-11-27
+- Cronômetro com tempo: quando estoura, a tela pisca em vermelho e mostra o tempo a mais (+00:15).
+- Velocidade: rodinha e setas mudam 5 % (Shift: 1 %), botões Lenta/Normal/Rápida/Máx.
+  e curva com controle fino nas velocidades de leitura.
+- "Passar rápido": segurar ⏩/⏪, o botão direito do mouse ou Shift + ↓/↑.
+- Barra de baixo reorganizada em blocos (Rolagem, Velocidade, Programa, Entrevista,
+  Agora) e barra de progresso clicável com a marca de cada bloco.
+- Novo seletor de espelho: dia com ◀ ▶, Hoje/Amanhã, filtro por programa, itens
+  do espelho antes de abrir e atalho para os dias que têm espelho.
+
 ## 0.2.0 — 2026-11-27
 - Painel de Formatação escondido; abre pelo botão "Formatação" no menu.
 - Predefinições com nome (fonte, tamanho, cores, monitor, tela cheia...).

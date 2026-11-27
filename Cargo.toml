@@ -1,6 +1,6 @@
 [package]
 name = "sintonia-teleprompter"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 description = "Teleprompter multiplataforma (Windows, macOS e Linux) integrado ao Sintonia"
 publish = false
