@@ -16,6 +16,9 @@ use std::time::{Duration, Instant};
 
 const ID_APRESENTADOR: &str = "sintonia-apresentador";
 
+/// Velocidade em 100 %, em "em" (altura da letra) por segundo.
+const VELOCIDADE_MAXIMA_EM: f32 = 5.0;
+
 #[derive(PartialEq)]
 enum Tela {
     Login,
@@ -61,9 +64,18 @@ pub struct App {
     assinatura_layout: String,
     tamanho_apresentador: Vec2,
     apresentador_aberto: bool,
+    /// Reabrir a tela do apresentador no próximo quadro (troca de monitor).
+    reabrir_apresentador: bool,
 
     crono: Cronometro,
     meta_txt: String,
+    /// Tela do apresentador mostrando só o cronômetro (tempo de entrevista).
+    so_cronometro: bool,
+    crono_entrevista: Cronometro,
+    meta_entrevista_txt: String,
+
+    /// Nome digitado para salvar uma predefinição.
+    predef_nome: String,
 
     espelhos: Vec<Value>,
     seletor_aberto: bool,
@@ -98,13 +110,20 @@ impl App {
                 cc.egui_ctx
                     .load_texture("sintonia-marca", img, egui::TextureOptions::LINEAR)
             });
+        let mut api = Api::iniciar(cc.egui_ctx.clone());
+        if cfg.lembrar_login && !cfg.username.trim().is_empty() {
+            api.enviar(Comando::LerSenhaGuardada {
+                url: cfg.server_url.clone(),
+                usuario: cfg.username.trim().to_string(),
+            });
+        }
         Self {
             marca,
             tema_aplicado: cfg.tema_claro,
             cfg_salva: cfg.clone(),
             cfg,
             cfg_checada: Instant::now(),
-            api: Api::iniciar(cc.egui_ctx.clone()),
+            api,
             tela: Tela::Login,
             usuario: None,
             senha: String::new(),
@@ -125,8 +144,13 @@ impl App {
             assinatura_layout: String::new(),
             tamanho_apresentador: Vec2::new(1280.0, 720.0),
             apresentador_aberto: false,
+            reabrir_apresentador: false,
             crono: Cronometro::default(),
             meta_txt: String::new(),
+            so_cronometro: false,
+            crono_entrevista: Cronometro::default(),
+            meta_entrevista_txt: String::new(),
+            predef_nome: String::new(),
             espelhos: Vec::new(),
             seletor_aberto: false,
             filtro_data: hoje(),
@@ -195,7 +219,15 @@ impl App {
                     self.erro_login = None;
                     self.senha.clear();
                     self.tela = Tela::Principal;
-                    self.cfg.username = u.username.clone();
+                    self.cfg.username = if self.cfg.lembrar_login {
+                        u.username.clone()
+                    } else {
+                        String::new()
+                    };
+                    // Grava já (não espera o salvamento periódico): o login fica lembrado
+                    // mesmo que o programa seja fechado logo em seguida.
+                    self.cfg.save();
+                    self.cfg_salva = self.cfg.clone();
                     if u.pode("espelho", "view") {
                         self.seletor_aberto = true;
                         self.api.enviar(Comando::ListarEspelhos);
@@ -205,6 +237,11 @@ impl App {
                     self.usuario = Some(u);
                 }
                 Resposta::ErroLogin(m) => self.erro_login = Some(m),
+                Resposta::SenhaGuardada(senha) => {
+                    if self.senha.is_empty() {
+                        self.senha = senha;
+                    }
+                }
                 Resposta::Espelhos(mut lista) => {
                     lista.sort_by(|a, b| {
                         let k = |v: &Value| {
@@ -364,7 +401,8 @@ impl App {
     // ------------------------------------------------------------------
 
     fn em_por_segundo(&self) -> f32 {
-        self.cfg.velocidade * 0.12
+        // 100 % = 5 linhas de letra por segundo (bem rápido); 10 % ≈ leitura normal.
+        self.cfg.velocidade_pct / 100.0 * VELOCIDADE_MAXIMA_EM
     }
 
     fn ir_para_bloco(&mut self, i: usize) {
@@ -411,14 +449,26 @@ impl App {
     }
 
     fn mudar_velocidade(&mut self, delta: f32) {
-        self.cfg.velocidade = (self.cfg.velocidade + delta).clamp(0.0, 10.0);
+        self.cfg.velocidade_pct = (self.cfg.velocidade_pct + delta).clamp(0.0, 100.0);
     }
 
-    /// Mouse sobre o texto (prévia ou apresentador), no mesmo jeito do Apotec:
-    /// arrastar move o texto, a rodinha muda a velocidade, clique na rodinha para.
-    fn mouse_no_texto(&mut self, ui: &Ui, resp: &egui::Response, px: f32) {
-        if resp.dragged_by(egui::PointerButton::Primary) {
-            self.rolagem_em -= resp.drag_delta().y / px;
+    /// Mouse sobre o texto (prévia ou apresentador), no jeito do Apotec:
+    /// arrastar rola o texto na hora, um clique roda/para, a rodinha muda a
+    /// velocidade e o clique na rodinha para.
+    /// `invertido`: a tela está espelhada na vertical (o arrasto acompanha a imagem).
+    fn mouse_no_texto(&mut self, ui: &Ui, resp: &egui::Response, px: f32, invertido: bool) {
+        // Arrasto imediato: não espera o mouse andar alguns pixels para "virar arrasto".
+        if resp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down()) {
+            let dy = ui.input(|i| i.pointer.delta().y);
+            if dy != 0.0 {
+                let sinal = if invertido { -1.0 } else { 1.0 };
+                self.rolagem_em -= sinal * dy / px;
+                ui.ctx().request_repaint();
+            }
+        }
+        // Clique simples (sem arrastar): roda / para.
+        if resp.clicked() {
+            self.alternar_rolagem();
         }
         if resp.hovered() {
             // Cada "clique" da rodinha: para cima acelera, para baixo freia.
@@ -434,14 +484,29 @@ impl App {
                     .sum()
             });
             if passos != 0.0 {
-                self.mudar_velocidade(passos * 0.25);
+                self.mudar_velocidade(passos);
             }
         }
         if resp.clicked_by(egui::PointerButton::Middle) {
             self.rodando = false;
         }
-        if resp.double_clicked() {
-            self.alternar_rolagem();
+    }
+
+    /// Liga/desliga a tela "só cronômetro" do apresentador. Ao ligar, se o
+    /// bloco atual for um entrevistado com duração no espelho, já usa essa duração.
+    fn alternar_so_cronometro(&mut self) {
+        self.so_cronometro = !self.so_cronometro;
+        if self.so_cronometro
+            && self.cfg.entrevista_com_tempo
+            && self.meta_entrevista_txt.trim().is_empty()
+            && let Some(seg) = self
+                .medidas
+                .bloco_atual(self.rolagem_em)
+                .and_then(|i| self.roteiro.segmentos.get(i))
+            && seg.tipo == Tipo::Entrevistado
+            && !seg.duracao.trim().is_empty()
+        {
+            self.meta_entrevista_txt = seg.duracao.trim().to_string();
         }
     }
 
@@ -450,6 +515,13 @@ impl App {
             return;
         }
         // Mesmas teclas do Apotec, para a equipe não precisar reaprender.
+        let (f6, f7) = ctx.input(|i| (i.key_pressed(Key::F6), i.key_pressed(Key::F7)));
+        if f6 {
+            self.crono_entrevista.alternar();
+        }
+        if f7 {
+            self.alternar_so_cronometro();
+        }
         let (espaco, cima, baixo, dir, esq, fim, pgup, pgdn, home, f5) = ctx.input(|i| {
             (
                 i.key_pressed(Key::Space),
@@ -478,10 +550,10 @@ impl App {
             ctx.request_repaint();
         }
         if dir {
-            self.mudar_velocidade(0.25);
+            self.mudar_velocidade(1.0);
         }
         if esq {
-            self.mudar_velocidade(-0.25);
+            self.mudar_velocidade(-1.0);
         }
         if fim {
             self.rodando = false;
@@ -511,7 +583,7 @@ impl App {
             ctx.request_repaint();
         }
         self.rolagem_em = self.rolagem_em.max(0.0);
-        if self.crono.rodando() {
+        if self.crono.rodando() || self.crono_entrevista.rodando() {
             ctx.request_repaint_after(Duration::from_millis(250));
         } else {
             // Relógio de parede na tela.
@@ -613,6 +685,9 @@ impl App {
                                 }
                                 ui.end_row();
                             });
+                        ui.add_space(6.0);
+                        ui.checkbox(&mut self.cfg.lembrar_login, "Lembrar usuário e senha neste computador")
+                            .on_hover_text("A senha fica guardada no cofre de senhas do sistema (Gerenciador de Credenciais do Windows / Chaveiro do Mac), nunca em arquivo de texto.");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             let pode = !self.api.ocupado
@@ -642,6 +717,20 @@ impl App {
                                 }
                             });
                         });
+                        ui.add_space(8.0);
+                        // Usar o programa só como cronômetro (sem texto, sem login).
+                        if ui
+                            .add(
+                                egui::Button::new(RichText::new("⏱  Usar só o cronômetro").font(theme::forte(14.0)))
+                                    .min_size(Vec2::new(ui.available_width(), 30.0)),
+                            )
+                            .on_hover_text("Abre a tela do apresentador já com o cronômetro grande no meio")
+                            .clicked()
+                        {
+                            self.tela = Tela::Principal;
+                            self.so_cronometro = true;
+                            self.apresentador_aberto = true;
+                        }
                         if let Some(e) = &self.erro_login {
                             ui.add_space(8.0);
                             ui.colored_label(p.vermelho, e);
@@ -653,6 +742,7 @@ impl App {
                         url: self.cfg.server_url.clone(),
                         usuario: self.cfg.username.trim().to_string(),
                         senha: self.senha.clone(),
+                        lembrar: self.cfg.lembrar_login,
                     });
                 }
             });
@@ -732,6 +822,33 @@ impl App {
                 });
                 ui.label(RichText::new("0 = primeiro monitor, 1 = segundo…\nVale ao entrar em tela cheia.").small().weak());
             });
+            ui.menu_button("Predefinições", |ui| {
+                if self.cfg.predefinicoes.is_empty() {
+                    ui.label(RichText::new("Nenhuma predefinição salva ainda.").weak());
+                }
+                let mut aplicar = None;
+                for (i, pre) in self.cfg.predefinicoes.iter().enumerate() {
+                    if ui.button(&pre.nome).on_hover_text("Aplicar esta predefinição").clicked() {
+                        aplicar = Some(i);
+                    }
+                }
+                if let Some(i) = aplicar {
+                    self.aplicar_predefinicao(i);
+                    ui.close();
+                }
+                ui.separator();
+                if ui.button("Salvar a configuração atual…").clicked() {
+                    self.cfg.mostrar_formatacao = true;
+                    ui.close();
+                }
+            });
+            if ui
+                .selectable_label(self.cfg.mostrar_formatacao, "Formatação")
+                .on_hover_text("Mostrar / esconder o painel de formatação")
+                .clicked()
+            {
+                self.cfg.mostrar_formatacao = !self.cfg.mostrar_formatacao;
+            }
             ui.menu_button("Aparência", |ui| {
                 ui.selectable_value(&mut self.cfg.tema_claro, false, "Tema escuro");
                 ui.selectable_value(&mut self.cfg.tema_claro, true, "Tema claro (fundo branco)");
@@ -748,10 +865,12 @@ impl App {
                     ("Page Up / Page Down", "lauda (bloco) anterior / próxima"),
                     ("F5", "inicia / pausa o cronômetro"),
                     ("F11 / Esc", "tela cheia do apresentador"),
-                    ("Arrastar o texto", "move o texto"),
+                    ("F6", "inicia / pausa o cronômetro da entrevista"),
+                    ("F7", "tela só cronômetro (liga / desliga)"),
+                    ("Arrastar o texto", "rola o texto"),
+                    ("Clique no texto", "rolar / parar"),
                     ("Rodinha do mouse", "muda a velocidade"),
                     ("Clique na rodinha", "para a rolagem"),
-                    ("Duplo clique", "rolar / pausar"),
                 ] {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(k).monospace());
@@ -834,11 +953,12 @@ impl App {
             }
             ui.separator();
             ui.label(RichText::new("Velocidade").color(p.texto_fraco))
-                .on_hover_text("→ / ← ou rodinha do mouse");
+                .on_hover_text("De 0 a 100 %. → / ← ou rodinha do mouse: 1 % por vez");
             ui.add(
-                egui::Slider::new(&mut self.cfg.velocidade, 0.0..=10.0)
-                    .step_by(0.05)
-                    .fixed_decimals(1),
+                egui::Slider::new(&mut self.cfg.velocidade_pct, 0.0..=100.0)
+                    .step_by(1.0)
+                    .fixed_decimals(0)
+                    .suffix(" %"),
             );
             ui.separator();
             let progresso = if self.medidas.total_em > 0.0 {
@@ -883,6 +1003,11 @@ impl App {
             {
                 self.crono.zerar();
             }
+            ui.checkbox(
+                &mut self.cfg.mostrar_relogio_apresentador,
+                "Mostrar ao apresentador",
+            )
+            .on_hover_text("Exibe (ou oculta) o cronômetro no canto da tela do apresentador");
             ui.separator();
             ui.label(rotulo("Tempo do programa"));
             ui.add(
@@ -917,6 +1042,81 @@ impl App {
                 ));
                 ui.label(rotulo("Agora"));
             });
+        });
+        ui.add_space(2.0);
+        // Entrevista: cronômetro próprio e a tela "só cronômetro" do apresentador.
+        ui.horizontal(|ui| {
+            let mono =
+                |t: String, c: Color32| RichText::new(t).font(FontId::monospace(20.0)).color(c);
+            let rotulo = |t: &str| {
+                RichText::new(t.to_uppercase())
+                    .size(10.5)
+                    .color(p.texto_mais_fraco)
+            };
+            let (txt, fundo, cor_txt) = if self.so_cronometro {
+                ("⏱  Voltar ao texto", p.vermelho, Color32::WHITE)
+            } else {
+                ("⏱  Tela só cronômetro", p.panel_2, p.texto)
+            };
+            if ui
+                .add(
+                    egui::Button::new(RichText::new(txt).font(theme::forte(13.5)).color(cor_txt))
+                        .fill(fundo),
+                )
+                .on_hover_text(
+                    "Troca o texto do apresentador por um cronômetro grande no meio da tela (F7)",
+                )
+                .clicked()
+            {
+                self.alternar_so_cronometro();
+            }
+            ui.label(rotulo("Entrevista"));
+            let decorrido = self.crono_entrevista.decorrido().as_secs() as i64;
+            ui.label(mono(fmt_tempo(decorrido), p.texto));
+            let (t, dica) = if self.crono_entrevista.rodando() {
+                ("⏸", "Pausar (F6)")
+            } else {
+                ("▶", "Iniciar (F6)")
+            };
+            if ui
+                .button(RichText::new(t).size(16.0))
+                .on_hover_text(dica)
+                .clicked()
+            {
+                self.crono_entrevista.alternar();
+            }
+            if ui
+                .button(RichText::new("↺").size(16.0))
+                .on_hover_text("Zerar")
+                .clicked()
+            {
+                self.crono_entrevista.zerar();
+            }
+            // Dois jeitos: só rodando (conta para cima) ou com tempo (regressivo).
+            ui.selectable_value(&mut self.cfg.entrevista_com_tempo, false, "Só rodando")
+                .on_hover_text("Conta para cima, sem limite de tempo");
+            ui.selectable_value(&mut self.cfg.entrevista_com_tempo, true, "Com tempo")
+                .on_hover_text("Contagem regressiva a partir da duração");
+            if self.cfg.entrevista_com_tempo {
+                ui.label(rotulo("Duração"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.meta_entrevista_txt)
+                        .hint_text("mm:ss")
+                        .desired_width(64.0),
+                );
+            }
+            if let Some(meta) = self.meta_entrevista_seg() {
+                let resta = meta - decorrido;
+                let c = if resta < 0 {
+                    p.vermelho
+                } else if resta <= 60 {
+                    p.ambar
+                } else {
+                    p.verde
+                };
+                ui.label(rotulo("Falta"));
+                ui.label(mono(fmt_tempo(resta), c));
+            }
         });
         ui.add_space(4.0);
     }
@@ -1138,11 +1338,97 @@ impl App {
         }
     }
 
+    fn aplicar_predefinicao(&mut self, i: usize) {
+        if let Some(pre) = self.cfg.predefinicoes.get(i).cloned() {
+            let estava_em_tela_cheia = self.cfg.tela_cheia_apresentador;
+            self.cfg.aplicar(&pre);
+            // Mudou de monitor com a tela do apresentador já em tela cheia: reabre nele.
+            if self.apresentador_aberto && estava_em_tela_cheia && self.cfg.tela_cheia_apresentador
+            {
+                self.apresentador_aberto = false;
+                self.reabrir_apresentador = true;
+            }
+            self.avisar(format!("Predefinição \"{}\" aplicada.", pre.nome), false);
+        }
+    }
+
+    /// Predefinições: guardam fonte, tamanho, cores, espelhamento, velocidade,
+    /// monitor e tela cheia do apresentador — para trocar tudo de uma vez.
+    fn secao_predefinicoes(&mut self, ui: &mut Ui) {
+        let p = self.p();
+        ui.label(
+            RichText::new("PREDEFINIÇÕES")
+                .size(10.5)
+                .color(p.texto_mais_fraco),
+        );
+        let mut aplicar = None;
+        let mut excluir = None;
+        for (i, pre) in self.cfg.predefinicoes.iter().enumerate() {
+            ui.horizontal(|ui| {
+                if ui
+                    .add(
+                        egui::Button::new(&pre.nome)
+                            .min_size(Vec2::new((ui.available_width() - 48.0).max(60.0), 24.0)),
+                    )
+                    .on_hover_text("Aplicar")
+                    .clicked()
+                {
+                    aplicar = Some(i);
+                }
+                if ui
+                    .small_button("🗑")
+                    .on_hover_text("Excluir esta predefinição")
+                    .clicked()
+                {
+                    excluir = Some(i);
+                }
+            });
+        }
+        if let Some(i) = aplicar {
+            self.aplicar_predefinicao(i);
+        }
+        if let Some(i) = excluir {
+            let nome = self.cfg.predefinicoes.remove(i).nome;
+            self.avisar(format!("Predefinição \"{nome}\" excluída."), false);
+        }
+        ui.horizontal(|ui| {
+            ui.add(
+                egui::TextEdit::singleline(&mut self.predef_nome)
+                    .hint_text("Nome (ex.: Jornal da Noite)")
+                    .desired_width((ui.available_width() - 90.0).max(80.0)),
+            );
+            let pode = !self.predef_nome.trim().is_empty();
+            if ui
+                .add_enabled(pode, egui::Button::new("Salvar"))
+                .on_hover_text("Guarda a formatação atual, o monitor e a tela cheia do apresentador. Mesmo nome = atualiza.")
+                .clicked()
+            {
+                let nome = self.predef_nome.trim().to_string();
+                self.cfg.guardar_predefinicao(&nome);
+                self.predef_nome.clear();
+                self.avisar(format!("Predefinição \"{nome}\" salva."), false);
+            }
+        });
+    }
+
     fn painel_formatacao(&mut self, ui: &mut Ui) {
         ScrollArea::vertical().show(ui, |ui| {
             ui.add_space(6.0);
-            ui.heading("Formatação");
+            ui.horizontal(|ui| {
+                ui.heading("Formatação");
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if ui
+                        .small_button("✕")
+                        .on_hover_text("Esconder (reabre no menu Formatação)")
+                        .clicked()
+                    {
+                        self.cfg.mostrar_formatacao = false;
+                    }
+                });
+            });
             ui.add_space(4.0);
+            self.secao_predefinicoes(ui);
+            ui.separator();
 
             ui.label("Fonte");
             let automatica = self.fontes.automatica().unwrap_or("padrão").to_string();
@@ -1391,7 +1677,10 @@ impl App {
         self.medidas = medidas;
 
         let px = (self.cfg.font_size * escala).max(4.0);
-        self.mouse_no_texto(ui, &resp, px);
+        self.mouse_no_texto(ui, &resp, px, false);
+        if self.so_cronometro {
+            self.desenhar_so_cronometro(ui, rect, Espelho::nenhum(rect));
+        }
         let p = self.p();
         ui.painter().rect_stroke(
             rect,
@@ -1424,6 +1713,13 @@ impl App {
     }
 
     fn janela_apresentador(&mut self, ctx: &egui::Context) {
+        if self.reabrir_apresentador {
+            // Fechou num quadro; reabre neste já no monitor novo.
+            self.reabrir_apresentador = false;
+            self.apresentador_aberto = true;
+            ctx.request_repaint();
+            return;
+        }
         if !self.apresentador_aberto {
             return;
         }
@@ -1464,6 +1760,10 @@ impl App {
                         horizontal: self.cfg.espelhar_horizontal,
                         vertical: self.cfg.espelhar_vertical,
                     };
+                    if self.so_cronometro {
+                        self.desenhar_so_cronometro(ui, rect, espelho);
+                        return;
+                    }
                     prompter::desenhar(
                         ui,
                         rect,
@@ -1474,7 +1774,12 @@ impl App {
                         1.0,
                         espelho,
                     );
-                    self.mouse_no_texto(ui, &resp, self.cfg.font_size.max(4.0));
+                    self.mouse_no_texto(
+                        ui,
+                        &resp,
+                        self.cfg.font_size.max(4.0),
+                        self.cfg.espelhar_vertical,
+                    );
                     if self.cfg.mostrar_relogio_apresentador {
                         self.relogio_apresentador(ui, rect, espelho);
                     }
@@ -1512,6 +1817,69 @@ impl App {
             Color32::from_black_alpha(170),
         );
         espelho.texto(ui, &painter, pos, galley, c);
+    }
+
+    fn meta_entrevista_seg(&self) -> Option<i64> {
+        if !self.cfg.entrevista_com_tempo {
+            return None; // "Só rodando": conta para cima, sem limite.
+        }
+        parse_duracao(&self.meta_entrevista_txt).filter(|s| *s > 0)
+    }
+
+    /// Tela "só cronômetro": o tempo grande no meio da tela, sem o texto —
+    /// para o apresentador acompanhar o tempo de uma entrevista.
+    fn desenhar_so_cronometro(&self, ui: &Ui, rect: Rect, espelho: Espelho) {
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, 0.0, cor(self.cfg.cor_fundo));
+        let p = theme::ESCURO;
+        let decorrido = self.crono_entrevista.decorrido().as_secs() as i64;
+        let (grande, cor_grande, detalhe) = match self.meta_entrevista_seg() {
+            Some(meta) => {
+                let resta = meta - decorrido;
+                let c = if resta < 0 {
+                    p.vermelho
+                } else if resta <= 60 {
+                    p.ambar
+                } else {
+                    p.verde
+                };
+                let det = if resta < 0 {
+                    format!("ESTOUROU · TOTAL {}", fmt_tempo(decorrido))
+                } else {
+                    format!("FALTAM · DE {}", fmt_tempo(meta))
+                };
+                (fmt_tempo(resta.abs()), c, det)
+            }
+            None => (
+                fmt_tempo(decorrido),
+                cor(self.cfg.cor_texto),
+                "TEMPO DE ENTREVISTA".to_string(),
+            ),
+        };
+        let h = rect.height();
+        let g_grande = painter.layout_no_wrap(
+            grande,
+            FontId::monospace((h * 0.34).min(rect.width() * 0.2)),
+            cor_grande,
+        );
+        let g_det = painter.layout_no_wrap(
+            detalhe,
+            FontId::proportional((h * 0.05).max(10.0)),
+            cor(self.cfg.cor_titulo),
+        );
+        let total = g_grande.size().y + g_det.size().y;
+        let topo = rect.center().y - total / 2.0;
+        let pos_det = egui::pos2(rect.center().x - g_det.size().x / 2.0, topo);
+        let pos_grande = egui::pos2(
+            rect.center().x - g_grande.size().x / 2.0,
+            topo + g_det.size().y,
+        );
+        let (cd, cg) = (cor(self.cfg.cor_titulo), cor_grande);
+        espelho.texto(ui, &painter, pos_det, g_det, cd);
+        espelho.texto(ui, &painter, pos_grande, g_grande, cg);
+        if self.crono_entrevista.rodando() {
+            ui.ctx().request_repaint_after(Duration::from_millis(250));
+        }
     }
 
     fn seletor_espelho(&mut self, ctx: &egui::Context) {
@@ -1685,11 +2053,13 @@ impl App {
             .resizable(true)
             .default_size(340.0)
             .show(ui, |ui| self.painel_roteiro(ui));
-        Panel::right("formatacao")
-            .frame(painel(12.0))
-            .resizable(true)
-            .default_size(290.0)
-            .show(ui, |ui| self.painel_formatacao(ui));
+        if self.cfg.mostrar_formatacao {
+            Panel::right("formatacao")
+                .frame(painel(12.0))
+                .resizable(true)
+                .default_size(300.0)
+                .show(ui, |ui| self.painel_formatacao(ui));
+        }
         CentralPanel::default()
             .frame(egui::Frame::new().fill(p.bg).inner_margin(16.0))
             .show(ui, |ui| self.previa(ui));

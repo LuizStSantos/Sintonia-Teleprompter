@@ -54,10 +54,17 @@ impl Usuario {
 }
 
 pub enum Comando {
+    /// `lembrar`: guarda (ou apaga) a senha no cofre do sistema se o login der certo.
     Login {
         url: String,
         usuario: String,
         senha: String,
+        lembrar: bool,
+    },
+    /// Busca no cofre do sistema a senha guardada para esse servidor + usuário.
+    LerSenhaGuardada {
+        url: String,
+        usuario: String,
     },
     Sair,
     ListarEspelhos,
@@ -71,6 +78,7 @@ pub enum Comando {
 pub enum Resposta {
     Logado(Usuario),
     ErroLogin(String),
+    SenhaGuardada(String),
     Espelhos(Vec<Value>),
     Salvo(Value),
     SessaoExpirada,
@@ -178,16 +186,23 @@ impl Worker {
                 url,
                 usuario,
                 senha,
+                lembrar,
             } => {
                 // Cliente novo = cookies zerados (troca de usuário/servidor).
                 self.cliente = novo_cliente();
                 self.base = normalizar_url(&url);
                 match self.login(&usuario, &senha) {
-                    Ok(u) => Resposta::Logado(u),
+                    Ok(u) => {
+                        cofre::guardar(&self.base, &usuario, lembrar.then_some(senha.as_str()));
+                        Resposta::Logado(u)
+                    }
                     Err(Falha::Sessao) => Resposta::ErroLogin("Usuário ou senha inválidos.".into()),
                     Err(Falha::Msg(m)) => Resposta::ErroLogin(m),
                 }
             }
+            Comando::LerSenhaGuardada { url, usuario } => Resposta::SenhaGuardada(
+                cofre::ler(&normalizar_url(&url), &usuario).unwrap_or_default(),
+            ),
             Comando::Sair => {
                 let _ = self
                     .cliente
@@ -298,6 +313,38 @@ impl Worker {
             .json(&esp)
             .send()?;
         Self::checar(r)
+    }
+}
+
+/// Senha guardada no cofre do sistema operacional: Gerenciador de Credenciais
+/// (Windows), Chaveiro/Keychain (macOS) ou Secret Service/GNOME Keyring (Linux).
+/// Nunca vai para o `config.json`. Se o cofre não existir, simplesmente não lembra.
+mod cofre {
+    const SERVICO: &str = "Sintonia Teleprompter";
+
+    fn chave(base: &str, usuario: &str) -> String {
+        format!("{usuario}@{base}")
+    }
+
+    pub fn ler(base: &str, usuario: &str) -> Option<String> {
+        if usuario.trim().is_empty() {
+            return None;
+        }
+        keyring::Entry::new(SERVICO, &chave(base, usuario))
+            .ok()?
+            .get_password()
+            .ok()
+    }
+
+    /// `Some(senha)` guarda; `None` apaga o que houver.
+    pub fn guardar(base: &str, usuario: &str, senha: Option<&str>) {
+        let Ok(entrada) = keyring::Entry::new(SERVICO, &chave(base, usuario)) else {
+            return;
+        };
+        let _ = match senha {
+            Some(s) => entrada.set_password(s),
+            None => entrada.delete_credential(),
+        };
     }
 }
 

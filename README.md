@@ -23,10 +23,26 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
 - **Formatação**: fonte (as do Sintonia ou qualquer fonte instalada no
   computador), negrito, tamanho, espaço entre linhas, margem, alinhamento,
   CAIXA ALTA, cores do texto/fundo/títulos/destaque, seta de leitura.
+- **Formatação** fica escondida para a prévia ter mais espaço: abra pelo
+  botão **Formatação** no menu de cima.
+- **Predefinições**: salve a formatação com um nome (ex.: "Jornal da Noite") —
+  fonte, tamanho, cores, espelhamento, velocidade, **monitor e tela cheia do
+  apresentador** — e troque tudo de uma vez pelo menu **Predefinições**.
 - **Cronômetro**: dispara sozinho quando o texto começa a rolar (Home zera),
   contagem regressiva do **tempo do programa** (preenchido sozinho com a soma
   das durações do espelho), **estimativa do tempo de leitura** que falta e
-  relógio. O apresentador também pode ver o cronômetro no canto da tela dele.
+  relógio. Para o apresentador ver o cronômetro no canto da tela dele, marque
+  **Mostrar ao apresentador** (vem desligado).
+- **Tela só cronômetro** (entrevistas): troca o texto do apresentador por um
+  cronômetro grande no meio da tela, com cronômetro próprio, de dois jeitos:
+  **Só rodando** (conta para cima, sem limite) ou **Com tempo** (regressivo a
+  partir da duração — preenchida sozinha quando o bloco atual é um entrevistado
+  do espelho; fica verde, âmbar no último minuto e vermelho quando estoura).
+- **Só o cronômetro**: na tela de entrada, "Usar só o cronômetro" abre direto
+  a tela do apresentador com o cronômetro, sem login e sem texto.
+- **Lembrar login**: marcado, o programa guarda usuário e senha. A senha vai
+  para o cofre de senhas do sistema (Gerenciador de Credenciais do Windows,
+  Chaveiro do Mac), nunca para arquivo de texto.
 - **Tema escuro e claro**, iguais aos do Sintonia.
 
 ![Tela do apresentador espelhada](docs/tela-apresentador-espelhada.png)
@@ -35,13 +51,15 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
 
 | Tecla / mouse | O que faz |
 |---|---|
-| Espaço · duplo clique no texto | rolar / pausar |
+| Espaço · clique no texto | rolar / parar |
 | End · clique na rodinha | para a rolagem |
-| ↑ / ↓ (segurar) · arrastar o texto | move o texto |
-| → / ← · rodinha do mouse | mais rápido / mais devagar |
+| ↑ / ↓ (segurar) · arrastar o texto | rola o texto na mão |
+| → / ← · rodinha do mouse | mais rápido / mais devagar (1 % por vez; a velocidade vai de 0 a 100 %) |
 | Home | volta ao começo e zera o cronômetro |
 | Page Up / Page Down | lauda (bloco) anterior / próxima |
 | F5 | inicia / pausa o cronômetro |
+| F6 | inicia / pausa o cronômetro da entrevista |
+| F7 | tela só cronômetro (liga / desliga) |
 | F11 / Esc | tela cheia do apresentador (liga / desliga) |
 
 ## Formato do TXT

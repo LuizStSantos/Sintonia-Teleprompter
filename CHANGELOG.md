@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.0 — 2026-11-27
+- Painel de Formatação escondido; abre pelo botão "Formatação" no menu.
+- Predefinições com nome (fonte, tamanho, cores, monitor, tela cheia...).
+- Cronômetro do apresentador desligado por padrão ("Mostrar ao apresentador").
+- Tela só cronômetro para entrevistas (F7), com cronômetro próprio (F6).
+- Mouse: arrastar rola o texto na hora; um clique roda/para.
+- Lembrar usuário e senha (senha no cofre do sistema).
+- Cronômetro da entrevista "Só rodando" (conta para cima) ou "Com tempo" (regressivo).
+- "Usar só o cronômetro" direto da tela de entrada.
+- Velocidade de 0 a 100 %, com máximo cerca de 4 vezes mais rápido que antes.
+
 ## 0.1.0 — 2026-11-27
 Primeira versão.
 - Login com usuário e senha do Sintonia; abre o Espelho do dia.

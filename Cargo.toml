@@ -1,6 +1,6 @@
 [package]
 name = "sintonia-teleprompter"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Teleprompter multiplataforma (Windows, macOS e Linux) integrado ao Sintonia"
 publish = false
@@ -15,6 +15,7 @@ directories = "6.0.0"
 eframe = "0.37.0"
 egui = "0.37.0"
 fontdb = "0.24.0"
+keyring = "4.2.0"
 reqwest = { version = "0.13.5", features = ["json", "cookies", "blocking"] }
 rfd = "0.18.0"
 serde = { version = "1.0.229", features = ["derive"] }

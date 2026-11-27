@@ -35,7 +35,7 @@ packaging/     .app do macOS, .desktop/instalador do Linux
 4. **Desenho**: `prompter::desenhar` diagrama cada bloco com a fonte/tamanho
    escolhidos e devolve `Medidas` (onde começa cada bloco, em "em"). A prévia
    usa a mesma função com `escala = largura da prévia / largura do apresentador`.
-5. **Rolagem**: `rolagem_em += velocidade × 0,12 × dt` a cada quadro.
+5. **Rolagem**: `rolagem_em += velocidade_pct / 100 × 5 × dt` a cada quadro (100 % = 5 em/s).
    Trocar fonte/tamanho/margem reposiciona a rolagem no mesmo ponto do bloco
    atual (assinatura de layout em `previa`).
 6. **Gravar no Sintonia** → `Comando::SalvarTextos`: busca o espelho atual no
