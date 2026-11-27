@@ -8,7 +8,8 @@ Você é responsável por entregar o **Sintonia Teleprompter** funcionando nos t
 
 - CI: `.github/workflows/build.yml` — testa e compila em `windows-latest`, `ubuntu-latest` e `macos-latest` (binário universal Intel + Apple Silicon via `lipo`). Tag `vX.Y.Z` publica os pacotes numa Release.
 - Empacotamento: `packaging/macos/criar-app.sh` (+ `Info.plist`), `packaging/linux/` (`.desktop` + `instalar.sh`). Windows: `.exe` dentro de `.zip`.
-- Versão: campo `version` do `Cargo.toml` (aparece no menu Ajuda). Ao lançar: atualize `CHANGELOG.md`, suba a versão, crie a tag.
+- Versão: `[workspace.package] version` no `Cargo.toml` da raiz (aparece no menu Ajuda e no login).
+- `.exe` local: `./scripts/build-windows.sh` (compilação cruzada a partir do Linux). Ao lançar: atualize `CHANGELOG.md`, suba a versão, crie a tag.
 
 Regras:
 1. Nunca publique uma release com o CI vermelho em algum dos três sistemas.

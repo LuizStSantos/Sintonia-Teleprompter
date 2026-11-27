@@ -1,5 +1,25 @@
 # Changelog
 
+Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/); versões
+seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/).
+
+## 0.4.0 — 2026-11-27
+### Entrada (login)
+- Novo visual no padrão do Sintonia, com campos maiores e faixa vermelha no cartão.
+- Situação do servidor enquanto o endereço é digitado ("Conectado" / "Sem conexão").
+- Mostrar/ocultar a senha; foco já no campo da senha.
+- Tentativas restantes antes do bloqueio e contagem regressiva do bloqueio de 15 min.
+- "Entrar automaticamente ao abrir" (com a senha lembrada no cofre do sistema).
+- Renovação automática da sessão do Sintonia (12 h) no meio do uso, repetindo a
+  última operação.
+### Projeto
+- Workspace com três crates: `sintonia-roteiro` (lógica), `sintonia-api` (cliente
+  do Sintonia) e `sintonia-teleprompter` (aplicativo); telas divididas em arquivos.
+- CI com formatação, lint (`-D warnings`) e testes antes dos builds; dependabot;
+  modelos de issue e pull request.
+- `CONTRIBUTING.md`, `SECURITY.md`, `rustfmt.toml`, `.editorconfig` e scripts
+  (`verificar.sh`, `build-windows.sh`, `sintonia-local.sh`).
+
 ## 0.3.0 — 2026-11-27
 - Cronômetro com tempo: quando estoura, a tela pisca em vermelho e mostra o tempo a mais (+00:15).
 - Velocidade: rodinha e setas mudam 5 % (Shift: 1 %), botões Lenta/Normal/Rápida/Máx.

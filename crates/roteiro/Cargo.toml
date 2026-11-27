@@ -1,0 +1,13 @@
+[package]
+name = "sintonia-roteiro"
+description = "Roteiro do Sintonia Teleprompter: espelho, TXT, destaque e tempos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde_json.workspace = true
+
+[lints]
+workspace = true

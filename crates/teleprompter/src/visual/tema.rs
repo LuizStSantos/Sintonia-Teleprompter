@@ -78,9 +78,9 @@ pub fn forte(tamanho: f32) -> FontId {
 /// Nomes das fontes do Sintonia oferecidas também para o texto do teleprompter.
 pub const FONTES_EMBUTIDAS: &[&str] = &["IBM Plex Sans (Sintonia)", "Space Grotesk (Sintonia)"];
 
-const PLEX_SANS: &[u8] = include_bytes!("../assets/fonts/IBMPlexSans-Variable.ttf");
-const PLEX_MONO: &[u8] = include_bytes!("../assets/fonts/IBMPlexMono-Medium.ttf");
-const SPACE_GROTESK: &[u8] = include_bytes!("../assets/fonts/SpaceGrotesk-Variable.ttf");
+const PLEX_SANS: &[u8] = include_bytes!("../../assets/fonts/IBMPlexSans-Variable.ttf");
+const PLEX_MONO: &[u8] = include_bytes!("../../assets/fonts/IBMPlexMono-Medium.ttf");
+const SPACE_GROTESK: &[u8] = include_bytes!("../../assets/fonts/SpaceGrotesk-Variable.ttf");
 
 fn variavel(bytes: &'static [u8], peso: f32) -> FontData {
     FontData::from_static(bytes).tweak(FontTweak {
@@ -217,4 +217,4 @@ pub fn aplicar(ctx: &egui::Context, claro: bool) {
 }
 
 /// Ícone do Sintonia (torre de rádio no quadrado vermelho), igual ao do site.
-pub const ICONE_PNG: &[u8] = include_bytes!("../assets/sintonia-icone.png");
+pub const ICONE_PNG: &[u8] = include_bytes!("../../assets/sintonia-icone.png");

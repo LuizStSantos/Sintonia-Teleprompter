@@ -1,7 +1,7 @@
 //! Fontes: lista as fontes instaladas no sistema (Windows, macOS e Linux) e
 //! carrega no egui só a que o operador escolher.
 
-use crate::theme;
+use crate::visual::tema;
 use egui::{FontData, FontDefinitions, FontFamily};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -28,21 +28,21 @@ impl Fontes {
         familias.sort_by_key(|f| f.to_lowercase());
         familias.dedup();
         // As fontes do Sintonia (embutidas) aparecem primeiro na lista.
-        for (i, f) in theme::FONTES_EMBUTIDAS.iter().enumerate() {
+        for (i, f) in tema::FONTES_EMBUTIDAS.iter().enumerate() {
             familias.insert(i, f.to_string());
         }
         Self {
             db,
             familias,
             carregadas: HashMap::new(),
-            definicoes: theme::fontes(),
+            definicoes: tema::fontes(),
             quadro: 0,
         }
     }
 
     /// Fonte usada quando o operador deixa "Automática": a do Sintonia.
     pub fn automatica(&self) -> Option<&str> {
-        theme::FONTES_EMBUTIDAS.first().copied()
+        tema::FONTES_EMBUTIDAS.first().copied()
     }
 
     /// Definições iniciais (fontes da interface do Sintonia).
@@ -88,7 +88,7 @@ impl Fontes {
         chave: &str,
         negrito: bool,
     ) -> Option<FontFamily> {
-        if let Some(dados) = theme::fonte_embutida(nome, negrito) {
+        if let Some(dados) = tema::fonte_embutida(nome, negrito) {
             return Some(self.registrar(ctx, chave, dados));
         }
         let familias = [fontdb::Family::Name(nome)];

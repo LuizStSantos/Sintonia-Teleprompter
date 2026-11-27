@@ -1,6 +1,9 @@
-# Compila e testa o Sintonia Teleprompter nos 3 sistemas.
-# Em toda tag "v*" (ex.: v0.1.0), publica os executáveis numa Release do GitHub.
-name: Build
+# Integração contínua do Sintonia Teleprompter.
+#
+# - qualidade: formatação, lint (clippy) e testes de todos os crates;
+# - build: executáveis de Windows, Linux e macOS (universal);
+# - em toda tag "vX.Y.Z", publica os pacotes numa Release do GitHub.
+name: CI
 
 on:
   push:
@@ -13,8 +16,27 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  qualidade:
+    name: Formatação, lint e testes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Bibliotecas do Linux
+        run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev
+      - name: Formatação
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Testes
+        run: cargo test --workspace --locked
+
   build:
-    name: ${{ matrix.nome }}
+    name: Build ${{ matrix.nome }}
+    needs: qualidade
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -28,20 +50,14 @@ jobs:
             os: macos-latest
     steps:
       - uses: actions/checkout@v4
-
-      - name: Rust
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
-
       - uses: Swatinem/rust-cache@v2
 
       - name: Bibliotecas do Linux
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libxkbcommon-dev libwayland-dev libgl1-mesa-dev
-
-      - name: Testes
-        run: cargo test --locked
 
       - name: Build (Windows / Linux)
         if: runner.os != 'macOS'
@@ -59,7 +75,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p dist/sintonia-teleprompter
-          cp target/release/sintonia-teleprompter assets/sintonia-icone.png packaging/linux/* dist/sintonia-teleprompter/
+          cp target/release/sintonia-teleprompter crates/teleprompter/assets/sintonia-icone.png packaging/linux/* dist/sintonia-teleprompter/
           tar -C dist -czf sintonia-teleprompter-linux-x64.tar.gz sintonia-teleprompter
 
       - name: Build + pacote macOS (universal: Intel e Apple Silicon)

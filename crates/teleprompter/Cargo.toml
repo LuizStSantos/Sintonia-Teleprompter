@@ -1,0 +1,26 @@
+[package]
+name = "sintonia-teleprompter"
+description = "Teleprompter multiplataforma (Windows, macOS e Linux) integrado ao Sintonia"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "sintonia-teleprompter"
+path = "src/main.rs"
+
+[dependencies]
+sintonia-api = { path = "../sintonia-api" }
+sintonia-roteiro = { path = "../roteiro" }
+chrono.workspace = true
+directories.workspace = true
+eframe.workspace = true
+egui.workspace = true
+fontdb.workspace = true
+rfd.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

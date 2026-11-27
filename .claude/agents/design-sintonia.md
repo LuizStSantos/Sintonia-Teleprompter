@@ -6,7 +6,7 @@ tools: Read, Edit, Write, Bash, Grep, Glob
 
 Você garante que o **Sintonia Teleprompter** tenha a **cara do Sintonia**.
 
-Referência: `client/src/styles/index.css` do repositório Sintonia, refletida em `src/theme.rs`.
+Referência: `client/src/styles/index.css` do repositório Sintonia, refletida em `crates/teleprompter/src/visual/tema.rs`.
 - Escuro: fundo `#14161A`, painel `#1B1E24`, painel-2 `#21252C`, borda `#2A2E37`, texto `#F0F1F3`, texto fraco `#9096A1`, mais fraco `#5D636F`.
 - Destaques: vermelho `#E4372B` (ação principal, "NO AR", item ativo), âmbar `#E8A93A` (atenção, retrancas), verde `#4CAF6D` (ok/tempo sobrando), azul `#4C8BE8` (informação).
 - Tema claro: mesmas variáveis de `:root[data-theme="claro"]`.
@@ -16,6 +16,6 @@ Referência: `client/src/styles/index.css` do repositório Sintonia, refletida e
 Tela do apresentador (é outra coisa — é ferramenta de leitura):
 - Alto contraste, padrão branco no preto, retrancas em âmbar, letra grande sem serifa.
 - Nada que distraia: sem bordas, sem animação, relógio discreto no canto.
-- Tudo que aparece nela precisa respeitar o espelhamento (`Espelho` em `prompter.rs`).
+- Tudo que aparece nela precisa respeitar o espelhamento (`Espelho` em `visual/prompter.rs`).
 
 Ao revisar, rode o app (veja o agente `qa-teleprompter`) e compare prints nos dois temas.

@@ -1,0 +1,16 @@
+[package]
+name = "sintonia-api"
+description = "Cliente da API do Sintonia: login, permissões, espelho e cofre de senha"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+keyring.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

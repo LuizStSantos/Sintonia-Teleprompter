@@ -1,58 +1,105 @@
 # Arquitetura
 
+O Sintonia Teleprompter é um **workspace Rust** com três crates, cada um com
+uma responsabilidade. As dependências vão sempre "para baixo": o aplicativo
+usa os outros dois; a lógica do roteiro não depende de nada de interface.
+
 ```
-src/
-  main.rs      janela principal (tamanho, ícone) e início do app
-  app.rs       estado e telas: login, operador (menu, roteiro, formatação,
-               prévia, transporte/cronômetro), apresentador, seletor de
-               espelho, confirmações e avisos; atalhos de teclado e mouse
-  prompter.rs  desenho do texto rolando (usado na prévia e no apresentador),
-               seta de leitura e espelhamento (horizontal/vertical)
-  script.rs    roteiro: Espelho do Sintonia → blocos; TXT (# títulos,
-               // laudas, << >> destaque) ida e volta; Latin-1 → UTF-8
-  api.rs       cliente HTTP do Sintonia numa thread separada (login por
-               cookie, listar espelhos, gravar textos alterados)
-  theme.rs     identidade visual do Sintonia: paleta escura/clara, fontes
-               embutidas (IBM Plex Sans/Mono, Space Grotesk), ícone
-  fonts.rs     fontes instaladas no sistema (fontdb) carregadas sob demanda
-  settings.rs  preferências salvas em config.json (pasta de config do SO)
-  timer.rs     cronômetro, formatação de tempo, leitura de durações
-assets/        fontes (OFL) e ícone do Sintonia
-packaging/     .app do macOS, .desktop/instalador do Linux
-.github/       CI: testes + builds Windows/macOS/Linux; release nas tags v*
-.claude/agents agentes de IA do projeto
+sintonia-teleprompter/
+├── Cargo.toml                 workspace: versão única, dependências e lints centralizados
+├── crates/
+│   ├── roteiro/               sintonia-roteiro — lógica pura, sem interface
+│   │   └── src/
+│   │       ├── lib.rs         API pública do crate
+│   │       ├── roteiro.rs     Roteiro, Segmento, Tipo; Espelho → blocos; TXT ↔ blocos
+│   │       ├── txt.rs         formato TXT: laudas "//" (Apotec), UTF-8 / Windows-1252
+│   │       ├── destaque.rs    trechos em destaque entre << e >>
+│   │       └── tempo.rs       Cronometro, fmt_tempo, parse_duracao
+│   │
+│   ├── sintonia-api/          sintonia-api — cliente do servidor do Sintonia
+│   │   └── src/
+│   │       ├── lib.rs         Api (thread de rede), Comando/Resposta, login, espelho, teste de conexão
+│   │       ├── usuario.rs     Usuario e permissões (mesmas regras do servidor)
+│   │       └── cofre.rs       senha no cofre do sistema (Windows/macOS/Linux)
+│   │
+│   └── teleprompter/          sintonia-teleprompter — o aplicativo (binário)
+│       ├── assets/            ícone e fontes do Sintonia (OFL), embutidos no executável
+│       └── src/
+│           ├── main.rs        janela principal
+│           ├── config.rs      preferências e predefinições (config.json)
+│           ├── visual/        identidade visual e desenho
+│           │   ├── tema.rs        paleta escura/clara e fontes do Sintonia
+│           │   ├── fontes.rs      fontes instaladas no sistema
+│           │   └── prompter.rs    texto rolando + espelhamento
+│           └── app/           telas — o estado fica em `App` (mod.rs); um arquivo por parte
+│               ├── mod.rs             App, inicialização, tela principal
+│               ├── login.rs           tela de entrada e EstadoLogin
+│               ├── rede.rs            respostas do servidor, renovação da sessão
+│               ├── documento.rs       abrir/salvar roteiro (espelho, TXT)
+│               ├── controle.rs        rolagem, velocidade, passar rápido, teclado e mouse
+│               ├── cronometros.rs     cronômetros e tela só cronômetro
+│               ├── menu.rs            barra de cima
+│               ├── transporte.rs      barra de baixo
+│               ├── painel_roteiro.rs  lista de blocos e edição
+│               ├── formatacao.rs      formatação e predefinições
+│               ├── previa.rs          prévia da tela do apresentador
+│               ├── apresentador.rs    janela do apresentador
+│               ├── seletor_espelho.rs escolha do espelho
+│               └── dialogos.rs        confirmações e avisos
+├── packaging/                 .app (macOS), .desktop/instalador (Linux), LEIA-ME (Windows)
+├── scripts/                   verificar.sh, build-windows.sh, sintonia-local.sh
+├── docs/                      esta documentação e prints
+└── .github/                   CI, modelos de issue/PR, dependabot
 ```
+
+## Por que assim
+
+- **`sintonia-roteiro`** não sabe que existe tela: é testado com `cargo test`
+  sem abrir janela, e qualquer mudança no formato do TXT ou na leitura do
+  espelho fica isolada ali.
+- **`sintonia-api`** fala com o Sintonia numa thread própria e avisa a interface
+  por um callback (não depende do egui). Pode ser reaproveitado por outra
+  ferramenta da emissora.
+- **`sintonia-teleprompter`** só cuida da interface. Em `app/`, `App` tem todo o
+  estado e cada arquivo implementa uma parte dele (`impl App` em vários
+  arquivos); os métodos são `pub(super)`, visíveis só dentro de `app/`.
 
 ## Fluxo
 
-1. **Login** → `Comando::Login` → `POST /api/auth/login`. O cliente HTTP guarda
-   o cookie `controle_tv_token` (JWT 12h) como um navegador faria.
-2. Com permissão de ver o Espelho, o app pede `GET /api/espelho` e abre o
-   seletor já filtrado na data de hoje.
-3. **Abrir espelho** → `Roteiro::do_espelho`: cada item vira um `Segmento`
-   (`materia`, `entrevistado`, `custom` → texto; `passagem` → intervalo). A soma
-   das durações vira o "tempo do programa".
-4. **Desenho**: `prompter::desenhar` diagrama cada bloco com a fonte/tamanho
-   escolhidos e devolve `Medidas` (onde começa cada bloco, em "em"). A prévia
-   usa a mesma função com `escala = largura da prévia / largura do apresentador`.
-5. **Rolagem**: `rolagem_em += velocidade_pct / 100 × 5 × dt` a cada quadro (100 % = 5 em/s).
-   Trocar fonte/tamanho/margem reposiciona a rolagem no mesmo ponto do bloco
-   atual (assinatura de layout em `previa`).
-6. **Gravar no Sintonia** → `Comando::SalvarTextos`: busca o espelho atual no
-   servidor, troca só o `texto` dos itens alterados e faz `PUT /api/espelho/:id`.
-   O servidor registra a alteração no Histórico.
+1. **Entrada** (`app/login.rs`): enquanto o operador digita o endereço, o app
+   testa o servidor (`Comando::TestarServidor` → `GET /api/auth/me`). O login é
+   `POST /api/auth/login`; o cliente HTTP guarda o cookie `controle_tv_token`
+   (JWT de 12 h) como um navegador. Erros trazem tentativas restantes (401) e
+   tempo de bloqueio (429).
+2. **Sessão** (`app/rede.rs`): a senha da sessão fica só na memória. Se o
+   servidor responder 401 (sessão expirou), o app faz login de novo sozinho e
+   repete a última operação (`Api::repetir_ultimo`).
+3. **Espelho**: `GET /api/espelho` → seletor por dia/programa →
+   `Roteiro::do_espelho` (cada item vira um bloco). A soma das durações vira o
+   tempo do programa.
+4. **Desenho**: `visual::prompter::desenhar` diagrama cada bloco e devolve
+   `Medidas` (início de cada bloco, em "em"). A prévia usa a mesma função com
+   `escala = largura da prévia / largura do apresentador`, então a quebra de
+   linhas é idêntica nas duas telas.
+5. **Rolagem**: `rolagem_em += (velocidade/100)^1,5 × 8 × dt` a cada quadro
+   (100 % = 8 em/s); "passar rápido" usa 20 em/s enquanto o botão é segurado.
+6. **Gravar no Sintonia**: busca o espelho atual, troca só o `texto` dos itens
+   alterados e faz `PUT /api/espelho/:id` (o servidor registra no Histórico).
 
 ## Espelhamento
 
 O egui não desenha texto invertido. `Espelho::texto` transforma o texto em
-triângulos com o `Tessellator` do epaint e inverte as coordenadas dos vértices
-(o que a placa de vídeo faria). A seta de leitura e o relógio do apresentador
-passam pela mesma transformação.
+triângulos com o `Tessellator` do epaint e inverte as coordenadas dos vértices.
+A seta de leitura, o relógio e a tela só cronômetro passam pela mesma transformação.
 
-## Ideias para as próximas versões
+## Segurança
 
-- Atualização em tempo real do espelho pelo WebSocket do Sintonia (`/ws`),
-  com aviso quando outra pessoa mudar o espelho aberto.
+Ver [SECURITY.md](../SECURITY.md): senha só no cofre do sistema (opcional) e
+na memória durante a sessão; nada de senha em arquivo ou log.
+
+## Próximos passos
+
+- Atualização em tempo real do espelho pelo WebSocket do Sintonia (`/ws`).
 - Controle por pedal/controle remoto USB (teclas configuráveis).
-- Impressão das laudas (o Apotec tinha).
 - Instaladores assinados (`.msi` e `.dmg` notarizado).
+- Registro de eventos (log) em arquivo para suporte.

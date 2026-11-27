@@ -1,0 +1,20 @@
+SINTONIA TELEPROMPTER - Windows
+
+1. Descompacte esta pasta e de dois cliques em "Sintonia Teleprompter.exe".
+   Nao precisa instalar nada.
+2. Se o Windows mostrar "O Windows protegeu o computador" (o programa ainda
+   nao e assinado), clique em "Mais informacoes" > "Executar assim mesmo".
+3. Na primeira tela, informe o endereco do Sintonia (o mesmo do navegador,
+   ex.: http://servidor:3001), seu usuario e senha. Deixe marcado "Lembrar
+   usuario e senha". Ou use "Sem login (so TXT)" / "So o cronometro".
+4. Formatacao e Predefinicoes: botoes no menu de cima.
+5. Dois monitores: deixe o segundo como tela ESTENDIDA, abra a tela do
+   apresentador, escolha o Monitor (1 = segundo) e marque "Tela cheia".
+
+Velocidade: 0 a 100%. Setas direita/esquerda ou rodinha = 5% (com Shift, 1%).
+Passar rapido: SEGURE o botao >> (ou << para voltar), o botao direito do
+mouse sobre o texto, ou Shift + seta para baixo/cima.
+
+Outros atalhos: Espaco ou clique no texto = rola/para; End para; arrastar o
+texto = move; Home = inicio e zera cronometro; PgUp/PgDn = bloco; F5
+cronometro; F6 cronometro da entrevista; F7 tela so cronometro; F11 tela cheia.

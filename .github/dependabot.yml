@@ -1,0 +1,14 @@
+# Atualizações de dependências (uma vez por semana, agrupadas).
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      rust:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly

@@ -7,7 +7,8 @@
 //!   `//` separa laudas — o mesmo formato do teleprompter Apotec);
 //! - ou ser digitado do zero na tela do operador.
 
-use crate::timer::parse_duracao;
+use crate::tempo::parse_duracao;
+use crate::txt::{tem_separador_lauda, trocar_separador_lauda};
 use serde_json::Value;
 use std::path::PathBuf;
 
@@ -66,46 +67,6 @@ impl Segmento {
             .filter(|p| *p != "<<" && *p != ">>")
             .count()
     }
-}
-
-/// Divide o texto em trechos normais e trechos em **destaque** (entre `<<` e `>>`),
-/// como no Apotec. Um marcador sozinho na linha some junto com a quebra de linha.
-pub fn trechos_destaque(texto: &str) -> Vec<(String, bool)> {
-    let mut out: Vec<(String, bool)> = Vec::new();
-    let mut atual = String::new();
-    let mut destaque = false;
-    let mut resto = texto;
-    while !resto.is_empty() {
-        let prox = [resto.find("<<"), resto.find(">>")]
-            .into_iter()
-            .flatten()
-            .min();
-        let Some(i) = prox else {
-            atual.push_str(resto);
-            break;
-        };
-        atual.push_str(&resto[..i]);
-        let abre = resto[i..].starts_with("<<");
-        resto = &resto[i + 2..];
-        // Marcador sozinho na linha: tira a quebra de linha que sobraria.
-        if (atual.ends_with('\n') || atual.is_empty())
-            && let Some(r) = resto
-                .strip_prefix("\r\n")
-                .or_else(|| resto.strip_prefix('\n'))
-        {
-            resto = r;
-        }
-        if abre != destaque {
-            if !atual.is_empty() {
-                out.push((std::mem::take(&mut atual), destaque));
-            }
-            destaque = abre;
-        }
-    }
-    if !atual.is_empty() {
-        out.push((atual, destaque));
-    }
-    out
 }
 
 #[derive(Clone, Debug, Default)]
@@ -333,57 +294,10 @@ impl Roteiro {
     }
 }
 
-fn eh_separador(c: &str, i: usize) -> bool {
-    c[i..].starts_with("//") && !c[..i].ends_with(':')
-}
-
-fn tem_separador_lauda(c: &str) -> bool {
-    c.match_indices("//").any(|(i, _)| eh_separador(c, i))
-}
-
-/// Troca cada "//" de lauda por uma linha "#" (bloco novo sem título).
-fn trocar_separador_lauda(c: &str) -> String {
-    let mut out = String::with_capacity(c.len() + 16);
-    let mut i = 0;
-    while i < c.len() {
-        if eh_separador(c, i) {
-            out.push_str("\n#\n");
-            i += 2;
-        } else {
-            let ch = c[i..].chars().next().unwrap();
-            out.push(ch);
-            i += ch.len_utf8();
-        }
-    }
-    out
-}
-
-/// Decodifica um TXT: UTF-8 (com ou sem BOM) ou, se não for, Windows-1252/Latin-1
-/// (comum em arquivos salvos pelo Bloco de Notas antigo).
-pub fn decodificar_txt(bytes: &[u8]) -> String {
-    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(bytes);
-    match std::str::from_utf8(bytes) {
-        Ok(t) => t.to_string(),
-        Err(_) => bytes.iter().map(|&b| cp1252(b)).collect(),
-    }
-}
-
-fn cp1252(b: u8) -> char {
-    const ALTOS: [char; 32] = [
-        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž',
-        '\u{8f}', '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}',
-        'ž', 'Ÿ',
-    ];
-    if (0x80..0xA0).contains(&b) {
-        ALTOS[(b - 0x80) as usize]
-    } else {
-        b as char
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::{decodificar_txt, trechos_destaque};
     use serde_json::json;
 
     #[test]

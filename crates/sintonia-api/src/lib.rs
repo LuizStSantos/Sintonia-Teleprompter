@@ -8,51 +8,16 @@
 //! As chamadas rodam numa thread separada para a tela nunca travar; a tela
 //! manda um [`Comando`] e recebe uma [`Resposta`] pelo canal.
 
-use serde::Deserialize;
+mod cofre;
+mod usuario;
+
+pub use usuario::Usuario;
+
 use serde_json::Value;
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::time::Duration;
 
-#[derive(Clone, Debug, Deserialize)]
-pub struct Usuario {
-    #[allow(dead_code)]
-    pub id: String,
-    pub username: String,
-    #[serde(default)]
-    pub role: String,
-    #[serde(default)]
-    pub permissions: Value,
-    #[serde(default, rename = "nomeCompleto")]
-    pub nome_completo: String,
-}
-
-impl Usuario {
-    pub fn nome(&self) -> &str {
-        if self.nome_completo.trim().is_empty() {
-            &self.username
-        } else {
-            &self.nome_completo
-        }
-    }
-
-    /// Mesma regra do servidor: admin pode tudo; os demais seguem `permissions[colecao]`.
-    pub fn pode(&self, colecao: &str, nivel: &str) -> bool {
-        if self.role == "admin" {
-            return true;
-        }
-        let p = self
-            .permissions
-            .get(colecao)
-            .and_then(Value::as_str)
-            .unwrap_or("none");
-        match nivel {
-            "view" => p == "view" || p == "edit",
-            "edit" => p == "edit",
-            _ => false,
-        }
-    }
-}
-
+#[derive(Clone)]
 pub enum Comando {
     /// `lembrar`: guarda (ou apaga) a senha no cofre do sistema se o login der certo.
     Login {
@@ -66,6 +31,10 @@ pub enum Comando {
         url: String,
         usuario: String,
     },
+    /// Verifica se o endereço responde como um servidor do Sintonia (não faz login).
+    TestarServidor {
+        url: String,
+    },
     Sair,
     ListarEspelhos,
     /// Grava de volta no Espelho os textos alterados: `(id do item, texto novo)`.
@@ -75,9 +44,34 @@ pub enum Comando {
     },
 }
 
+/// Login recusado, com os detalhes que o servidor manda.
+#[derive(Clone, Debug, PartialEq)]
+pub struct FalhaLogin {
+    pub mensagem: String,
+    /// Tentativas que sobram antes do bloqueio (o servidor bloqueia após 5).
+    pub restantes: Option<u32>,
+    /// Bloqueado por excesso de tentativas: quanto tempo falta.
+    pub bloqueado_por: Option<Duration>,
+}
+
+impl FalhaLogin {
+    fn simples(mensagem: impl Into<String>) -> Self {
+        Self {
+            mensagem: mensagem.into(),
+            restantes: None,
+            bloqueado_por: None,
+        }
+    }
+}
+
 pub enum Resposta {
     Logado(Usuario),
-    ErroLogin(String),
+    ErroLogin(FalhaLogin),
+    /// Resultado de [`Comando::TestarServidor`] para aquele endereço.
+    ServidorStatus {
+        url: String,
+        resultado: Result<(), String>,
+    },
     SenhaGuardada(String),
     Espelhos(Vec<Value>),
     Salvo(Value),
@@ -89,11 +83,25 @@ pub enum Resposta {
 pub struct Api {
     tx: Sender<Comando>,
     rx: Receiver<Resposta>,
-    pub ocupado: bool,
+    /// Comandos "de trabalho" ainda sem resposta (o teste de conexão e a
+    /// leitura do cofre não contam: rodam em segundo plano sem travar botões).
+    pendentes: usize,
+    /// Último comando que precisava de sessão — repetido depois de renovar
+    /// o login automaticamente (ver [`Api::repetir_ultimo`]).
+    ultimo: Option<Comando>,
+}
+
+fn conta_como_ocupado(c: &Comando) -> bool {
+    !matches!(
+        c,
+        Comando::TestarServidor { .. } | Comando::LerSenhaGuardada { .. }
+    )
 }
 
 impl Api {
-    pub fn iniciar(ctx: egui::Context) -> Self {
+    /// Inicia a thread de rede. `ao_responder` é chamado a cada resposta
+    /// (a interface usa para se redesenhar).
+    pub fn iniciar(ao_responder: impl Fn() + Send + 'static) -> Self {
         let (tx, rx_cmd) = channel::<Comando>();
         let (tx_resp, rx) = channel::<Resposta>();
         std::thread::Builder::new()
@@ -105,28 +113,49 @@ impl Api {
                     if tx_resp.send(resp).is_err() {
                         break;
                     }
-                    ctx.request_repaint();
+                    ao_responder();
                 }
             })
             .expect("não foi possível iniciar a thread de rede");
         Self {
             tx,
             rx,
-            ocupado: false,
+            pendentes: 0,
+            ultimo: None,
         }
     }
 
     pub fn enviar(&mut self, cmd: Comando) {
-        self.ocupado = true;
+        if conta_como_ocupado(&cmd) {
+            self.pendentes += 1;
+        }
+        if matches!(cmd, Comando::ListarEspelhos | Comando::SalvarTextos { .. }) {
+            self.ultimo = Some(cmd.clone());
+        }
         let _ = self.tx.send(cmd);
     }
 
     pub fn receber(&mut self) -> Option<Resposta> {
-        let r = self.rx.try_recv().ok();
-        if r.is_some() {
-            self.ocupado = false;
+        let r = self.rx.try_recv().ok()?;
+        if !matches!(
+            r,
+            Resposta::ServidorStatus { .. } | Resposta::SenhaGuardada(_)
+        ) {
+            self.pendentes = self.pendentes.saturating_sub(1);
         }
-        r
+        Some(r)
+    }
+
+    /// Há alguma operação (login, carregar, gravar) em andamento.
+    pub fn ocupado(&self) -> bool {
+        self.pendentes > 0
+    }
+
+    /// Repete a última operação que falhou por sessão expirada.
+    pub fn repetir_ultimo(&mut self) {
+        if let Some(c) = self.ultimo.clone() {
+            self.enviar(c);
+        }
     }
 }
 
@@ -160,6 +189,31 @@ fn novo_cliente() -> reqwest::blocking::Client {
         .user_agent(concat!("SintoniaTeleprompter/", env!("CARGO_PKG_VERSION")))
         .build()
         .expect("cliente HTTP")
+}
+
+/// Confere se o endereço responde como o Sintonia: `GET /api/auth/me` sem
+/// login devolve 401 com `{ "error": ... }` (ou 200, se já houver sessão).
+fn testar_servidor(base: &str) -> Result<(), String> {
+    let cliente = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(4))
+        .build()
+        .map_err(|e| e.to_string())?;
+    match cliente.get(format!("{base}/api/auth/me")).send() {
+        Ok(r) if matches!(r.status().as_u16(), 200 | 401) => {
+            let corpo: Value = r.json().unwrap_or(Value::Null);
+            if corpo.is_object() {
+                Ok(())
+            } else {
+                Err("Respondeu, mas não parece ser o Sintonia.".into())
+            }
+        }
+        Ok(r) => Err(format!(
+            "Respondeu {}, mas não parece ser o Sintonia.",
+            r.status().as_u16()
+        )),
+        Err(e) if e.is_timeout() => Err("O servidor não respondeu a tempo.".into()),
+        Err(_) => Err("Sem conexão com esse endereço.".into()),
+    }
 }
 
 /// Aceita "servidor:3001", "http://servidor:3001/" etc.
@@ -196,10 +250,13 @@ impl Worker {
                         cofre::guardar(&self.base, &usuario, lembrar.then_some(senha.as_str()));
                         Resposta::Logado(u)
                     }
-                    Err(Falha::Sessao) => Resposta::ErroLogin("Usuário ou senha inválidos.".into()),
-                    Err(Falha::Msg(m)) => Resposta::ErroLogin(m),
+                    Err(f) => Resposta::ErroLogin(f),
                 }
             }
+            Comando::TestarServidor { url } => Resposta::ServidorStatus {
+                resultado: testar_servidor(&normalizar_url(&url)),
+                url,
+            },
             Comando::LerSenhaGuardada { url, usuario } => Resposta::SenhaGuardada(
                 cofre::ler(&normalizar_url(&url), &usuario).unwrap_or_default(),
             ),
@@ -251,23 +308,52 @@ impl Worker {
         }))
     }
 
-    fn login(&self, usuario: &str, senha: &str) -> Result<Usuario, Falha> {
+    fn login(&self, usuario: &str, senha: &str) -> Result<Usuario, FalhaLogin> {
         let r = self
             .cliente
             .post(format!("{}/api/auth/login", self.base))
             .json(&serde_json::json!({ "username": usuario, "password": senha }))
-            .send()?;
-        if r.status().as_u16() == 401 {
-            let corpo: Value = r.json().unwrap_or(Value::Null);
-            let msg = corpo
-                .get("error")
-                .and_then(Value::as_str)
-                .unwrap_or("Usuário ou senha inválidos.");
-            return Err(Falha::Msg(msg.to_string()));
+            .send()
+            .map_err(|e| match Falha::from(e) {
+                Falha::Msg(m) => FalhaLogin::simples(m),
+                Falha::Sessao => FalhaLogin::simples("Erro de comunicação."),
+            })?;
+        let status = r.status().as_u16();
+        if status == 200 {
+            return r
+                .json::<Usuario>()
+                .map_err(|e| FalhaLogin::simples(format!("Resposta inesperada do servidor: {e}")));
         }
-        let v = Self::checar(r)?;
-        serde_json::from_value(v)
-            .map_err(|e| Falha::Msg(format!("Resposta inesperada do servidor: {e}")))
+        let corpo: Value = r.json().unwrap_or(Value::Null);
+        let mensagem = corpo
+            .get("error")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+        Err(match status {
+            // Senha errada: o servidor diz quantas tentativas sobram.
+            401 => FalhaLogin {
+                mensagem: mensagem.unwrap_or_else(|| "Usuário ou senha inválidos.".into()),
+                restantes: corpo
+                    .get("restantes")
+                    .and_then(Value::as_u64)
+                    .map(|n| n as u32),
+                bloqueado_por: None,
+            },
+            // Muitas tentativas: bloqueado por alguns minutos.
+            429 => FalhaLogin {
+                mensagem: mensagem
+                    .unwrap_or_else(|| "Muitas tentativas. Aguarde alguns minutos.".into()),
+                restantes: Some(0),
+                bloqueado_por: corpo
+                    .get("segundos")
+                    .and_then(Value::as_u64)
+                    .map(Duration::from_secs),
+            },
+            404 => FalhaLogin::simples("Esse endereço não parece ser o servidor do Sintonia."),
+            _ => FalhaLogin::simples(
+                mensagem.unwrap_or_else(|| format!("O servidor respondeu {status}.")),
+            ),
+        })
     }
 
     fn get(&self, caminho: &str) -> Result<Value, Falha> {
@@ -316,41 +402,24 @@ impl Worker {
     }
 }
 
-/// Senha guardada no cofre do sistema operacional: Gerenciador de Credenciais
-/// (Windows), Chaveiro/Keychain (macOS) ou Secret Service/GNOME Keyring (Linux).
-/// Nunca vai para o `config.json`. Se o cofre não existir, simplesmente não lembra.
-mod cofre {
-    const SERVICO: &str = "Sintonia Teleprompter";
-
-    fn chave(base: &str, usuario: &str) -> String {
-        format!("{usuario}@{base}")
-    }
-
-    pub fn ler(base: &str, usuario: &str) -> Option<String> {
-        if usuario.trim().is_empty() {
-            return None;
-        }
-        keyring::Entry::new(SERVICO, &chave(base, usuario))
-            .ok()?
-            .get_password()
-            .ok()
-    }
-
-    /// `Some(senha)` guarda; `None` apaga o que houver.
-    pub fn guardar(base: &str, usuario: &str, senha: Option<&str>) {
-        let Ok(entrada) = keyring::Entry::new(SERVICO, &chave(base, usuario)) else {
-            return;
-        };
-        let _ = match senha {
-            Some(s) => entrada.set_password(s),
-            None => entrada.delete_credential(),
-        };
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn teste_de_conexao_nao_trava_os_botoes() {
+        let mut api = Api::iniciar(|| {});
+        api.enviar(Comando::TestarServidor {
+            url: "127.0.0.1:9".into(),
+        });
+        assert!(!api.ocupado(), "testar o servidor roda em segundo plano");
+        api.enviar(Comando::ListarEspelhos);
+        assert!(api.ocupado());
+        assert!(
+            api.ultimo.is_some(),
+            "guardado para repetir após renovar a sessão"
+        );
+    }
 
     #[test]
     fn url() {

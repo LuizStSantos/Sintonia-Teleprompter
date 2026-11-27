@@ -7,11 +7,11 @@
 //! menor), a quebra de linhas é idêntica nas duas e o operador vê exatamente
 //! a mesma linha que o apresentador está lendo.
 
-use crate::script::{Roteiro, Tipo, trechos_destaque};
-use crate::settings::{Alinhamento, Settings};
+use crate::config::{Alinhamento, Settings};
 use egui::epaint::{Mesh, TessellationOptions, Tessellator, TextShape};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align, Color32, FontFamily, FontId, Galley, Painter, Pos2, Rect, Shape, Stroke, Ui};
+use sintonia_roteiro::{Roteiro, Tipo, trechos_destaque};
 use std::sync::Arc;
 
 /// Posições calculadas no último desenho (em "em", a partir do começo do texto).

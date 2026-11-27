@@ -48,9 +48,15 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
   pisca em vermelho mostrando o tempo a mais, ex.: +00:15).
 - **Só o cronômetro**: na tela de entrada, "Usar só o cronômetro" abre direto
   a tela do apresentador com o cronômetro, sem login e sem texto.
-- **Lembrar login**: marcado, o programa guarda usuário e senha. A senha vai
-  para o cofre de senhas do sistema (Gerenciador de Credenciais do Windows,
-  Chaveiro do Mac), nunca para arquivo de texto.
+- **Entrada**: mostra se o servidor do Sintonia está conectado enquanto você
+  digita o endereço, permite ver a senha digitada, avisa quantas tentativas
+  restam e quanto tempo falta se o Sintonia bloquear o usuário. **Lembrar
+  usuário e senha** guarda a senha no cofre do sistema (Gerenciador de
+  Credenciais do Windows, Chaveiro do Mac), nunca em arquivo; com **Entrar
+  automaticamente**, o programa já abre logado.
+- **Sessão sem susto**: a sessão do Sintonia dura 12 horas. Se ela vencer no
+  meio do programa, o teleprompter entra de novo sozinho e repete o que estava
+  fazendo — o operador não sai da tela.
 - **Tema escuro e claro**, iguais aos do Sintonia.
 
 ![Tela do apresentador espelhada](docs/tela-apresentador-espelhada.png)
@@ -117,19 +123,33 @@ Baixe o pacote do seu sistema na página de **Releases** do repositório
 
 Na primeira tela, informe o endereço do servidor do Sintonia (o mesmo do
 navegador, ex.: `http://servidor:3001`), usuário e senha. O endereço e o
-usuário ficam salvos; a senha, nunca.
+usuário ficam salvos; a senha só no cofre do sistema, se você pedir.
 
-## Compilar
+![Tela de entrada](docs/tela-login.png)
 
-Precisa do [Rust](https://rustup.rs) (stable).
+## Desenvolvimento
+
+Precisa do [Rust](https://rustup.rs) (stable). No Linux, também:
+`sudo apt install libxkbcommon-dev libwayland-dev libgl1-mesa-dev`.
 
 ```bash
-cargo run              # roda em modo desenvolvimento
-cargo test             # testes
-cargo build --release  # executável final em target/release/
+cargo run                  # roda o aplicativo
+./scripts/verificar.sh     # formatação, lint e testes (o mesmo que o CI)
+cargo build --release      # executável final em target/release/
+./scripts/build-windows.sh # .exe do Windows a partir do Linux
 ```
 
-No Linux, para compilar: `sudo apt install libxkbcommon-dev libwayland-dev libgl1-mesa-dev`.
+O projeto é um workspace Rust com três crates:
+
+| Crate | Pasta | Responsabilidade |
+|---|---|---|
+| `sintonia-roteiro` | `crates/roteiro` | roteiro, TXT, destaque e tempos — lógica pura, sem interface |
+| `sintonia-api` | `crates/sintonia-api` | cliente do Sintonia: login, espelho, cofre de senha |
+| `sintonia-teleprompter` | `crates/teleprompter` | o aplicativo: telas, visual, configurações |
+
+Detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md); padrões e como lançar
+uma versão em [CONTRIBUTING.md](CONTRIBUTING.md); senhas e sessão em
+[SECURITY.md](SECURITY.md).
 
 ## Agentes de IA do projeto
 
@@ -152,4 +172,4 @@ código: [`docs/ARQUITETURA.md`](docs/ARQUITETURA.md).
 
 As fontes IBM Plex Sans, IBM Plex Mono e Space Grotesk (as mesmas do site do
 Sintonia) vão embutidas no programa, sob a licença SIL Open Font License
-(`assets/fonts/OFL-*.txt`). O ícone é o mesmo do Sintonia.
+(`crates/teleprompter/assets/fonts/OFL-*.txt`). O ícone é o mesmo do Sintonia.

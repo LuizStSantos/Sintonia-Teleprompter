@@ -6,14 +6,9 @@
     windows_subsystem = "windows"
 )]
 
-mod api;
 mod app;
-mod fonts;
-mod prompter;
-mod script;
-mod settings;
-mod theme;
-mod timer;
+mod config;
+mod visual;
 
 fn main() -> eframe::Result<()> {
     let opcoes = eframe::NativeOptions {
@@ -21,7 +16,9 @@ fn main() -> eframe::Result<()> {
             .with_title("Sintonia Teleprompter — Operador")
             .with_inner_size([1360.0, 820.0])
             .with_min_inner_size([1180.0, 640.0])
-            .with_icon(eframe::icon_data::from_png_bytes(theme::ICONE_PNG).unwrap_or_default()),
+            .with_icon(
+                eframe::icon_data::from_png_bytes(visual::tema::ICONE_PNG).unwrap_or_default(),
+            ),
         ..Default::default()
     };
     eframe::run_native(

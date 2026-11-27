@@ -14,7 +14,7 @@ chmod +x "$APP/Contents/MacOS/sintonia-teleprompter"
 ICONSET="$(mktemp -d)/sintonia.iconset"
 mkdir -p "$ICONSET"
 for t in 16 32 64 128 256 512; do
-  sips -z $t $t "$RAIZ/assets/sintonia-icone.png" --out "$ICONSET/icon_${t}x${t}.png" >/dev/null
+  sips -z $t $t "$RAIZ/crates/teleprompter/assets/sintonia-icone.png" --out "$ICONSET/icon_${t}x${t}.png" >/dev/null
 done
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/sintonia.icns"
 

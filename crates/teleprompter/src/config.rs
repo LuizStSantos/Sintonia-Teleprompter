@@ -67,6 +67,8 @@ pub struct Settings {
     pub mostrar_formatacao: bool,
     /// Guardar usuário e senha (a senha vai para o cofre do sistema, nunca para este arquivo).
     pub lembrar_login: bool,
+    /// Com a senha lembrada, entra sozinho ao abrir o programa.
+    pub entrar_automatico: bool,
     /// Predefinições salvas pelo operador (fonte, tamanho, cores, monitor, tela cheia...).
     pub predefinicoes: Vec<Predefinicao>,
 
@@ -105,6 +107,7 @@ impl Default for Settings {
             tema_claro: false,
             mostrar_formatacao: false,
             lembrar_login: true,
+            entrar_automatico: false,
             predefinicoes: Vec::new(),
             mostrar_relogio_apresentador: false,
             monitor_apresentador: 1,
@@ -126,6 +129,7 @@ const FORA_DA_PREDEFINICAO: &[&str] = &[
     "username",
     "predefinicoes",
     "lembrar_login",
+    "entrar_automatico",
     "mostrar_formatacao",
     "tema_claro",
 ];

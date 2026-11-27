@@ -3936,19 +3936,36 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
 
 [[package]]
+name = "sintonia-api"
+version = "0.4.0"
+dependencies = [
+ "keyring",
+ "reqwest",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sintonia-roteiro"
+version = "0.4.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "sintonia-teleprompter"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "directories",
  "eframe",
  "egui",
  "fontdb",
- "keyring",
- "reqwest",
  "rfd",
  "serde",
  "serde_json",
+ "sintonia-api",
+ "sintonia-roteiro",
 ]
 
 [[package]]
