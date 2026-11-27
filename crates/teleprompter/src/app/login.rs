@@ -333,14 +333,20 @@ impl App {
                                     {
                                         self.tela = Tela::Principal;
                                     }
-                                    if ui
-                                        .add(egui::Button::new("⏱  Só o cronômetro").min_size(Vec2::new(w, 32.0)))
+                                    if icones::botao_com(
+                                        ui,
+                                        Icone::Cronometro,
+                                        Some(RichText::new("Só o cronômetro")),
+                                        Vec2::new(w, 32.0),
+                                        None,
+                                        None,
+                                    )
                                         .on_hover_text("Abre a tela do apresentador já com o cronômetro grande no meio")
                                         .clicked()
                                     {
                                         self.tela = Tela::Principal;
                                         self.so_cronometro = true;
-                                        self.apresentador_aberto = true;
+                                        self.alternar_apresentador();
                                     }
                                 });
                             });

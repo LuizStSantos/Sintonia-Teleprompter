@@ -7,12 +7,24 @@ impl App {
         let p = self.p();
         ui.add_space(6.0);
         ui.horizontal(|ui| {
+            if icones::botao(ui, Icone::SetaEsquerda, 24.0)
+                .on_hover_text("Recolher o painel do roteiro (mais espaço para a prévia)")
+                .clicked()
+            {
+                self.cfg.lateral_recolhida = true;
+            }
             ui.heading("Roteiro");
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui
-                    .button("➕ Bloco")
-                    .on_hover_text("Adiciona um bloco de texto depois do selecionado")
-                    .clicked()
+                if icones::botao_com(
+                    ui,
+                    Icone::Mais,
+                    Some(RichText::new("Bloco")),
+                    Vec2::new(0.0, 26.0),
+                    None,
+                    None,
+                )
+                .on_hover_text("Adiciona um bloco de texto depois do selecionado")
+                .clicked()
                 {
                     let pos = self
                         .selecionado
@@ -50,13 +62,6 @@ impl App {
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 for (i, seg) in self.roteiro.segmentos.iter().enumerate() {
-                    let icone = match seg.tipo {
-                        Tipo::Materia => "📰",
-                        Tipo::Entrevistado => "🎤",
-                        Tipo::Manual => "📝",
-                        Tipo::Intervalo => "📺",
-                        Tipo::Texto => "📄",
-                    };
                     let nome = if seg.titulo.trim().is_empty() {
                         "(sem título)"
                     } else {
@@ -91,10 +96,41 @@ impl App {
                     };
                     let painter = ui.painter_at(rect);
                     painter.text(
-                        rect.left_center() + Vec2::new(10.0, 0.0),
+                        rect.left_center() + Vec2::new(8.0, 0.0),
                         Align2::LEFT_CENTER,
-                        format!("{:>2}  {icone}  {nome}", i + 1),
-                        fonte,
+                        format!("{:>2}", i + 1),
+                        FontId::monospace(12.0),
+                        cor_txt,
+                    );
+                    let w = Self::etiqueta_tipo(
+                        &painter,
+                        rect.left() + 32.0,
+                        rect.center().y,
+                        seg.tipo,
+                        p,
+                    );
+                    // Título cortado com "…" para não passar por cima da duração.
+                    let x_nome = rect.left() + 40.0 + w;
+                    let reserva = if seg.duracao.trim().is_empty() {
+                        12.0
+                    } else {
+                        52.0
+                    };
+                    let mut job = egui::text::LayoutJob::single_section(
+                        nome.to_string(),
+                        egui::text::TextFormat {
+                            font_id: fonte,
+                            color: cor_txt,
+                            ..Default::default()
+                        },
+                    );
+                    job.wrap = egui::text::TextWrapping::truncate_at_width(
+                        (rect.right() - reserva - x_nome).max(20.0),
+                    );
+                    let g = painter.layout_job(job);
+                    painter.galley(
+                        egui::pos2(x_nome, rect.center().y - g.size().y / 2.0),
+                        g,
                         cor_txt,
                     );
                     let mut x = rect.right() - 8.0;
@@ -152,21 +188,26 @@ impl App {
                 .font(tema::forte(13.5)),
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui
-                    .small_button("🗑")
+                if icones::botao(ui, Icone::Lixeira, 24.0)
                     .on_hover_text("Tirar do teleprompter (não apaga do Sintonia)")
                     .clicked()
                 {
                     excluir = true;
                 }
                 if ui
-                    .add_enabled(i + 1 < total, egui::Button::new("⬇").small())
+                    .add_enabled_ui(i + 1 < total, |ui| {
+                        icones::botao(ui, Icone::SetaBaixo, 24.0)
+                    })
+                    .inner
+                    .on_hover_text("Descer o bloco")
                     .clicked()
                 {
                     mover = Some((i, i + 1));
                 }
                 if ui
-                    .add_enabled(i > 0, egui::Button::new("⬆").small())
+                    .add_enabled_ui(i > 0, |ui| icones::botao(ui, Icone::SetaCima, 24.0))
+                    .inner
+                    .on_hover_text("Subir o bloco")
                     .clicked()
                 {
                     mover = Some((i, i - 1));
@@ -218,5 +259,39 @@ impl App {
             };
             self.editado = true;
         }
+    }
+
+    /// Painel do roteiro recolhido: só a setinha e os números dos blocos.
+    pub(super) fn painel_roteiro_recolhido(&mut self, ui: &mut Ui) {
+        let p = self.p();
+        ui.add_space(6.0);
+        ui.vertical_centered(|ui| {
+            if icones::botao(ui, Icone::SetaDireita, 26.0)
+                .on_hover_text("Mostrar o painel do roteiro")
+                .clicked()
+            {
+                self.cfg.lateral_recolhida = false;
+            }
+            ui.add_space(6.0);
+            let atual = self.medidas.bloco_atual(self.rolagem_em);
+            let mut ir_para = None;
+            ScrollArea::vertical().id_salt("lista-mini").show(ui, |ui| {
+                for (i, seg) in self.roteiro.segmentos.iter().enumerate() {
+                    let no_ar = atual == Some(i);
+                    let texto = RichText::new(format!("{}", i + 1))
+                        .font(FontId::monospace(13.0))
+                        .color(if no_ar { Color32::WHITE } else { p.texto_fraco });
+                    let botao = egui::Button::new(texto)
+                        .min_size(Vec2::new(30.0, 26.0))
+                        .fill(if no_ar { p.vermelho } else { p.panel_2 });
+                    if ui.add(botao).on_hover_text(&seg.titulo).clicked() {
+                        ir_para = Some(i);
+                    }
+                }
+            });
+            if let Some(i) = ir_para {
+                self.ir_para_bloco(i);
+            }
+        });
     }
 }

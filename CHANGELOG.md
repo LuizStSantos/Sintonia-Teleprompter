@@ -3,6 +3,25 @@
 Formato baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/); versões
 seguem o [Versionamento Semântico](https://semver.org/lang/pt-BR/).
 
+## 0.5.0 — 2026-11-27
+### Telas
+- Ícones desenhados (play, pausa, voltar, avançar, zerar, cronômetro…) no lugar
+  dos símbolos do sistema; etiquetas MAT/ENT/INT/MAN/TXT na lista de blocos.
+- Setinhas para recolher a barra de baixo e o painel do roteiro.
+- Barra de baixo mais enxuta sozinha em telas baixas (1366 × 768).
+- F11 deixa a janela do operador em tela cheia.
+- Tela do apresentador: escolha o monitor pelo nome/resolução e ela já abre em
+  tela cheia nele; botão "Abrir apresentador" acima da prévia.
+- Títulos longos na lista cortados com "…".
+### Desempenho
+- Renderizador OpenGL por padrão (mais leve); opção "Moderno" em Formatação.
+- Rolagem pelo relógio real e em frações de pixel (sem "degraus").
+- Texto espelhado reaproveitado entre quadros, em vez de recalculado.
+### Executável
+- Ícone do Sintonia e dados do programa embutidos no .exe; .icns em alta resolução.
+- Assinatura digital automática no CI quando os certificados estiverem nos
+  Secrets (ver docs/ASSINATURA.md). Corrige o arquivo do CI (YAML inválido).
+
 ## 0.4.0 — 2026-11-27
 ### Entrada (login)
 - Novo visual no padrão do Sintonia, com campos maiores e faixa vermelha no cartão.

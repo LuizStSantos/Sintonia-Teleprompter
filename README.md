@@ -27,7 +27,7 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
   computador), negrito, tamanho, espaço entre linhas, margem, alinhamento,
   CAIXA ALTA, cores do texto/fundo/títulos/destaque, seta de leitura.
 - **Velocidade** de 0 a 100 %, com botões prontos (Lenta, Normal, Rápida,
-  Máx.). Para **passar rápido** um trecho, segure ⏩ (ou ⏪ para voltar), o
+  Máx.). Para **passar rápido** um trecho, segure o botão de avançar (ou o de voltar), o
   botão direito do mouse sobre o texto, ou Shift + ↓. A barra vermelha acima
   dos controles mostra onde está o texto; clique nela para ir direto.
 - **Formatação** fica escondida para a prévia ter mais espaço: abra pelo
@@ -58,6 +58,12 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
   meio do programa, o teleprompter entra de novo sozinho e repete o que estava
   fazendo — o operador não sai da tela.
 - **Tema escuro e claro**, iguais aos do Sintonia.
+- **Telas pequenas** (ex.: 1366 × 768): a barra de baixo fica mais enxuta
+  sozinha; as **setinhas** recolhem a barra de baixo (fica só o essencial numa
+  linha) e o painel do roteiro (ficam só os números dos blocos). **F11** deixa
+  a janela do operador em tela cheia.
+- **Computadores simples**: o padrão é o renderizador **OpenGL**, mais leve; dá
+  para trocar em Formatação → Desempenho.
 
 ![Tela do apresentador espelhada](docs/tela-apresentador-espelhada.png)
 
@@ -69,13 +75,14 @@ Também abre e salva **TXT**, inclusive os arquivos do teleprompter antigo
 | End · clique na rodinha | para a rolagem |
 | ↑ / ↓ (segurar) · arrastar o texto | rola o texto na mão |
 | → / ← · rodinha do mouse | velocidade +5 % / −5 % (com Shift, 1 %; vai de 0 a 100 %) |
-| Segurar ⏩ / ⏪ · segurar o botão direito no texto · Shift + ↓ / ↑ | passa rápido (para a frente / para trás) |
+| Segurar avançar / voltar · segurar o botão direito no texto · Shift + ↓ / ↑ | passa rápido (para a frente / para trás) |
 | Home | volta ao começo e zera o cronômetro |
 | Page Up / Page Down | lauda (bloco) anterior / próxima |
 | F5 | inicia / pausa o cronômetro |
 | F6 | inicia / pausa o cronômetro da entrevista |
 | F7 | tela só cronômetro (liga / desliga) |
-| F11 / Esc | tela cheia do apresentador (liga / desliga) |
+| F11 / Esc | tela cheia do apresentador (liga / desliga), com a janela dele ativa |
+| F11 | tela cheia da janela do operador |
 
 ## Formato do TXT
 
@@ -99,10 +106,11 @@ A colheita da soja avança no estado...
 ## Uso com dois monitores
 
 1. Ligue o monitor do teleprompter como **tela estendida**.
-2. Clique em **Abrir tela do apresentador**.
-3. Em "Tela do apresentador", escolha o **Monitor** (0 = principal, 1 =
-   segundo...) e marque **Tela cheia** (ou aperte F11 com a janela dele
-   ativa). Se o monitor fica atrás de um vidro, marque **Espelhar horizontal**.
+2. No menu **Apresentador**, clique no monitor do teleprompter (o programa
+   mostra o nome e a resolução de cada um): a tela do apresentador já abre
+   **em tela cheia nele**. O botão **Abrir apresentador**, acima da prévia,
+   abre direto no monitor que não é o do operador.
+3. Se o monitor fica atrás de um vidro, marque **Espelhar horizontal** em Formatação.
 
 A prévia na tela do operador mostra exatamente a mesma quebra de linhas da
 tela do apresentador (mesma proporção), sem espelhar.
@@ -149,7 +157,8 @@ O projeto é um workspace Rust com três crates:
 
 Detalhes em [docs/ARQUITETURA.md](docs/ARQUITETURA.md); padrões e como lançar
 uma versão em [CONTRIBUTING.md](CONTRIBUTING.md); senhas e sessão em
-[SECURITY.md](SECURITY.md).
+[SECURITY.md](SECURITY.md); assinatura digital do `.exe`/`.app` em
+[docs/ASSINATURA.md](docs/ASSINATURA.md).
 
 ## Agentes de IA do projeto
 

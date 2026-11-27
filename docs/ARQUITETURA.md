@@ -23,13 +23,15 @@ sintonia-teleprompter/
 │   │       └── cofre.rs       senha no cofre do sistema (Windows/macOS/Linux)
 │   │
 │   └── teleprompter/          sintonia-teleprompter — o aplicativo (binário)
-│       ├── assets/            ícone e fontes do Sintonia (OFL), embutidos no executável
+│       ├── assets/            ícones (PNG/.ico, gerados do SVG) e fontes do Sintonia (OFL)
+│       ├── build.rs           embute ícone e versão no .exe do Windows
 │       └── src/
 │           ├── main.rs        janela principal
 │           ├── config.rs      preferências e predefinições (config.json)
 │           ├── visual/        identidade visual e desenho
 │           │   ├── tema.rs        paleta escura/clara e fontes do Sintonia
 │           │   ├── fontes.rs      fontes instaladas no sistema
+│           │   ├── icones.rs      ícones desenhados (play, pausa, setas…) e botões com ícone
 │           │   └── prompter.rs    texto rolando + espelhamento
 │           └── app/           telas — o estado fica em `App` (mod.rs); um arquivo por parte
 │               ├── mod.rs             App, inicialização, tela principal
@@ -43,7 +45,7 @@ sintonia-teleprompter/
 │               ├── painel_roteiro.rs  lista de blocos e edição
 │               ├── formatacao.rs      formatação e predefinições
 │               ├── previa.rs          prévia da tela do apresentador
-│               ├── apresentador.rs    janela do apresentador
+│               ├── apresentador.rs    janela do apresentador, escolha do monitor, F11
 │               ├── seletor_espelho.rs escolha do espelho
 │               └── dialogos.rs        confirmações e avisos
 ├── packaging/                 .app (macOS), .desktop/instalador (Linux), LEIA-ME (Windows)
@@ -82,7 +84,9 @@ sintonia-teleprompter/
    `escala = largura da prévia / largura do apresentador`, então a quebra de
    linhas é idêntica nas duas telas.
 5. **Rolagem**: `rolagem_em += (velocidade/100)^1,5 × 8 × dt` a cada quadro
-   (100 % = 8 em/s); "passar rápido" usa 20 em/s enquanto o botão é segurado.
+   (100 % = 8 em/s), com `dt` medido no relógio real; "passar rápido" usa
+   20 em/s enquanto o botão é segurado. O texto é posicionado em frações de
+   pixel (`round_text_to_pixels = false`) para não andar "em degraus".
 6. **Gravar no Sintonia**: busca o espelho atual, troca só o `texto` dos itens
    alterados e faz `PUT /api/espelho/:id` (o servidor registra no Histórico).
 
@@ -90,6 +94,15 @@ sintonia-teleprompter/
 
 O egui não desenha texto invertido. `Espelho::texto` transforma o texto em
 triângulos com o `Tessellator` do epaint e inverte as coordenadas dos vértices.
+Os triângulos de cada bloco ficam guardados entre quadros (só são refeitos
+quando o texto ou a formatação mudam).
+
+## Desempenho
+
+- Renderizador **OpenGL** (glow) por padrão — mais leve em PCs simples e
+  placas integradas; o wgpu ("Moderno") é opcional (`config.rs → Renderizador`).
+- A tela só redesenha sem parar enquanto o texto rola; parada, redesenha 1×/s
+  (relógio) ou 4×/s (cronômetro rodando).
 A seta de leitura, o relógio e a tela só cronômetro passam pela mesma transformação.
 
 ## Segurança
@@ -101,5 +114,5 @@ na memória durante a sessão; nada de senha em arquivo ou log.
 
 - Atualização em tempo real do espelho pelo WebSocket do Sintonia (`/ws`).
 - Controle por pedal/controle remoto USB (teclas configuráveis).
-- Instaladores assinados (`.msi` e `.dmg` notarizado).
+- Instaladores (`.msi` e `.dmg`); a assinatura já está pronta no CI (docs/ASSINATURA.md).
 - Registro de eventos (log) em arquivo para suporte.

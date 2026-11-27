@@ -17,8 +17,9 @@ mod rede;
 mod seletor_espelho;
 mod transporte;
 
-use crate::config::{Alinhamento, Settings};
+use crate::config::{Alinhamento, Renderizador, Settings};
 use crate::visual::fontes::Fontes;
+use crate::visual::icones::{self, Icone};
 use crate::visual::prompter::{self, Espelho, Medidas, cor};
 use crate::visual::tema::{self, Paleta};
 use egui::{
@@ -36,7 +37,7 @@ const ID_APRESENTADOR: &str = "sintonia-apresentador";
 
 /// Velocidade em 100 %, em "em" (altura da letra) por segundo.
 const VELOCIDADE_MAXIMA_EM: f32 = 8.0;
-/// "Passar rápido" (segurar ⏩/⏪, o botão direito do mouse ou Shift+↓/↑).
+/// "Passar rápido" (segurar avançar/voltar, o botão direito do mouse ou Shift+↓/↑).
 const VELOCIDADE_TURBO_EM: f32 = 20.0;
 /// Velocidades prontas dos botões da barra de baixo.
 const VELOCIDADES_PRONTAS: [(&str, f32); 4] = [
@@ -99,6 +100,11 @@ pub struct App {
     assinatura_layout: String,
     tamanho_apresentador: Vec2,
     apresentador_aberto: bool,
+    /// Monitores conectados (lidos do sistema a cada 2 s).
+    monitores: Vec<InfoMonitor>,
+    monitores_lidos: Option<Instant>,
+    /// Momento do último avanço da rolagem (o tempo real, não o estimado).
+    ultimo_avanco: Option<Instant>,
     /// Reabrir a tela do apresentador no próximo quadro (troca de monitor).
     reabrir_apresentador: bool,
 
@@ -134,6 +140,17 @@ pub struct App {
     pendente: Option<Pendente>,
 }
 
+/// Um monitor conectado, para o operador escolher onde vai a tela do apresentador.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) struct InfoMonitor {
+    pub(super) nome: String,
+    pub(super) largura: u32,
+    pub(super) altura: u32,
+    pub(super) principal: bool,
+    /// É o monitor onde está a janela do operador.
+    pub(super) do_operador: bool,
+}
+
 fn hoje() -> String {
     chrono::Local::now().format("%Y-%m-%d").to_string()
 }
@@ -144,6 +161,10 @@ impl App {
         let fontes = Fontes::carregar_sistema();
         cc.egui_ctx.set_fonts(fontes.definicoes());
         tema::aplicar(&cc.egui_ctx, cfg.tema_claro);
+        // Texto rolando em frações de pixel: sem isso ele anda "em degraus"
+        // (1 px a cada poucos quadros), o que parece engasgado em velocidade baixa.
+        cc.egui_ctx
+            .tessellation_options_mut(|o| o.round_text_to_pixels = false);
         let marca = eframe::icon_data::from_png_bytes(tema::ICONE_PNG)
             .ok()
             .map(|ic| {
@@ -192,6 +213,9 @@ impl App {
             assinatura_layout: String::new(),
             tamanho_apresentador: Vec2::new(1280.0, 720.0),
             apresentador_aberto: false,
+            monitores: Vec::new(),
+            monitores_lidos: None,
+            ultimo_avanco: None,
             reabrir_apresentador: false,
             crono: Cronometro::default(),
             meta_txt: String::new(),
@@ -214,6 +238,31 @@ impl App {
             aviso: None,
             pendente: None,
         }
+    }
+
+    /// Etiqueta do tipo do bloco (MAT, ENT, INT...) desenhada a partir de `x`,
+    /// centralizada em `y`. Devolve a largura usada.
+    fn etiqueta_tipo(painter: &egui::Painter, x: f32, y: f32, tipo: Tipo, p: Paleta) -> f32 {
+        let cor = match tipo {
+            Tipo::Intervalo => p.ambar,
+            Tipo::Entrevistado => p.azul,
+            Tipo::Materia => p.verde,
+            _ => p.texto_fraco,
+        };
+        let g = painter.layout_no_wrap(tipo.sigla().to_string(), FontId::monospace(10.0), cor);
+        let caixa = Rect::from_min_size(
+            egui::pos2(x, y - g.size().y / 2.0 - 2.0),
+            g.size() + Vec2::new(10.0, 4.0),
+        );
+        painter.rect(
+            caixa,
+            4.0,
+            cor.gamma_multiply(0.12),
+            egui::Stroke::new(1.0, cor.gamma_multiply(0.5)),
+            egui::StrokeKind::Inside,
+        );
+        painter.galley(caixa.min + Vec2::new(5.0, 2.0), g, cor);
+        caixa.width()
     }
 
     fn p(&self) -> Paleta {
@@ -281,6 +330,10 @@ impl App {
             tema::aplicar(&ctx, self.cfg.tema_claro);
             self.tema_aplicado = self.cfg.tema_claro;
         }
+        // F11: tela cheia da janela do operador (a do apresentador tem o seu F11).
+        if !ctx.egui_wants_keyboard_input() && ctx.input(|i| i.key_pressed(Key::F11)) {
+            self.alternar_tela_cheia_operador(&ctx);
+        }
         let p = self.p();
         let painel = |m: f32| {
             egui::Frame::new()
@@ -294,11 +347,19 @@ impl App {
         Panel::bottom("transporte")
             .frame(painel(10.0))
             .show(ui, |ui| self.painel_transporte(ui));
-        Panel::left("roteiro")
-            .frame(painel(12.0))
-            .resizable(true)
-            .default_size(340.0)
-            .show(ui, |ui| self.painel_roteiro(ui));
+        if self.cfg.lateral_recolhida {
+            Panel::left("roteiro-recolhido")
+                .frame(painel(6.0))
+                .resizable(false)
+                .exact_size(48.0)
+                .show(ui, |ui| self.painel_roteiro_recolhido(ui));
+        } else {
+            Panel::left("roteiro")
+                .frame(painel(12.0))
+                .resizable(true)
+                .default_size(if Self::tela_baixa(ui) { 290.0 } else { 330.0 })
+                .show(ui, |ui| self.painel_roteiro(ui));
+        }
         if self.cfg.mostrar_formatacao {
             Panel::right("formatacao")
                 .frame(painel(12.0))
@@ -318,8 +379,9 @@ impl App {
 }
 
 impl eframe::App for App {
-    fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut Ui, frame: &mut eframe::Frame) {
         self.fontes.quadro += 1;
+        self.ler_monitores(frame);
         // "Passar rápido" vale enquanto alguém segura o botão/tecla: o pedido do
         // quadro anterior vira o efeito deste.
         self.turbo = self.turbo_pedido;
@@ -341,7 +403,7 @@ impl eframe::App for App {
         self.salvar_cfg_se_mudou();
     }
 
-    fn on_exit(&mut self) {
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.cfg.save();
     }
 }

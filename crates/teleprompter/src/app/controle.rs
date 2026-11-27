@@ -227,7 +227,14 @@ impl App {
     }
 
     pub(super) fn avancar(&mut self, ctx: &egui::Context) {
-        let dt = ctx.input(|i| i.stable_dt).min(0.1);
+        // Tempo real desde o último quadro: a rolagem anda na mesma velocidade
+        // mesmo quando o computador atrasa um quadro (PC mais simples).
+        let agora = Instant::now();
+        let dt = self
+            .ultimo_avanco
+            .map_or(0.0, |t| agora.duration_since(t).as_secs_f32())
+            .min(0.1);
+        self.ultimo_avanco = Some(agora);
         if self.turbo != 0.0 {
             self.rolagem_em += self.turbo * VELOCIDADE_TURBO_EM * dt;
             if self.medidas.total_em > 0.0 {

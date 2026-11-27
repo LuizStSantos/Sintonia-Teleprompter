@@ -18,7 +18,11 @@ fn main() {
         .chain(std::iter::repeat(0))
         .take(4)
         .collect();
-    let virgulas = numeros.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    let virgulas = numeros
+        .iter()
+        .map(u32::to_string)
+        .collect::<Vec<_>>()
+        .join(",");
     let icone = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
         .join("assets/icones/sintonia.ico")
         .to_string_lossy()

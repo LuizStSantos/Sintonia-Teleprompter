@@ -12,7 +12,17 @@ use egui::epaint::{Mesh, TessellationOptions, Tessellator, TextShape};
 use egui::text::{LayoutJob, TextFormat};
 use egui::{Align, Color32, FontFamily, FontId, Galley, Painter, Pos2, Rect, Shape, Stroke, Ui};
 use sintonia_roteiro::{Roteiro, Tipo, trechos_destaque};
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+/// Texto espelhado já transformado em triângulos, por bloco de texto: refazer
+/// isso a cada quadro pesava em computadores simples. A chave é o próprio
+/// texto diagramado (o egui reaproveita o mesmo enquanto nada muda).
+type ChaveMalha = (usize, [u8; 4], u32, [usize; 2]);
+thread_local! {
+    static MALHAS: RefCell<HashMap<ChaveMalha, (Arc<Galley>, Mesh)>> = RefCell::new(HashMap::new());
+}
 
 /// Posições calculadas no último desenho (em "em", a partir do começo do texto).
 #[derive(Clone, Debug, Default)]
@@ -88,16 +98,39 @@ impl Espelho {
         // em triângulos (como a placa de vídeo faria) e invertemos os vértices.
         let ctx = ui.ctx();
         let tamanho_atlas = ctx.fonts(|f| f.font_image_size());
-        let mut tess = Tessellator::new(
-            ctx.pixels_per_point(),
-            TessellationOptions::default(),
+        let ppp = ctx.pixels_per_point();
+        let chave = (
+            Arc::as_ptr(&galley) as usize,
+            cor.to_array(),
+            ppp.to_bits(),
             tamanho_atlas,
-            vec![],
         );
-        let mut mesh = Mesh::default();
-        tess.tessellate_text(&TextShape::new(pos, galley, cor), &mut mesh);
+        let mut mesh = MALHAS.with(|m| {
+            let mut m = m.borrow_mut();
+            if m.len() > 400 {
+                m.clear();
+            }
+            m.entry(chave)
+                .or_insert_with(|| {
+                    let opcoes = TessellationOptions {
+                        round_text_to_pixels: false,
+                        ..Default::default()
+                    };
+                    let mut tess = Tessellator::new(ppp, opcoes, tamanho_atlas, vec![]);
+                    let mut malha = Mesh::default();
+                    tess.tessellate_text(
+                        &TextShape::new(Pos2::ZERO, galley.clone(), cor),
+                        &mut malha,
+                    );
+                    // Guarda o Arc junto: enquanto estiver aqui, o endereço não é reaproveitado.
+                    (galley, malha)
+                })
+                .1
+                .clone()
+        });
+        let desloca = pos.to_vec2();
         for v in &mut mesh.vertices {
-            v.pos = self.ponto(v.pos);
+            v.pos = self.ponto(v.pos + desloca);
         }
         painter.add(Shape::mesh(mesh));
     }

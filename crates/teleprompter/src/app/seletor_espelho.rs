@@ -70,13 +70,22 @@ impl App {
                         .color(p.texto),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui.button("✕").on_hover_text("Fechar (Esc)").clicked() {
+                    if icones::botao(ui, Icone::Fechar, 28.0)
+                        .on_hover_text("Fechar (Esc)")
+                        .clicked()
+                    {
                         fechar = true;
                     }
-                    if ui
-                        .button("⟳ Atualizar")
-                        .on_hover_text("Buscar de novo no Sintonia")
-                        .clicked()
+                    if icones::botao_com(
+                        ui,
+                        Icone::Zerar,
+                        Some(RichText::new("Atualizar")),
+                        Vec2::new(0.0, 28.0),
+                        None,
+                        None,
+                    )
+                    .on_hover_text("Buscar de novo no Sintonia")
+                    .clicked()
                     {
                         self.api.enviar(Comando::ListarEspelhos);
                     }
@@ -134,7 +143,7 @@ impl App {
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.filtro_busca)
-                            .hint_text("🔍 procurar")
+                            .hint_text("procurar programa ou título")
                             .desired_width(180.0),
                     );
                 });
@@ -345,26 +354,33 @@ impl App {
                             .show(ui, |ui| {
                                 for (i, seg) in roteiro.segmentos.iter().enumerate() {
                                     ui.horizontal(|ui| {
-                                        let (icone, c) = match seg.tipo {
-                                            Tipo::Intervalo => ("📺", p.ambar),
-                                            Tipo::Entrevistado => ("🎤", p.texto),
-                                            Tipo::Materia => ("📰", p.texto),
-                                            _ => ("📝", p.texto),
+                                        let c = if seg.tipo == Tipo::Intervalo {
+                                            p.ambar
+                                        } else {
+                                            p.texto
                                         };
                                         ui.label(
                                             RichText::new(format!("{:>2}", i + 1))
                                                 .font(FontId::monospace(12.0))
                                                 .color(p.texto_mais_fraco),
                                         );
+                                        let (r, _) = ui.allocate_exact_size(
+                                            Vec2::new(36.0, 18.0),
+                                            Sense::hover(),
+                                        );
+                                        Self::etiqueta_tipo(
+                                            ui.painter(),
+                                            r.left(),
+                                            r.center().y,
+                                            seg.tipo,
+                                            p,
+                                        );
                                         ui.label(
-                                            RichText::new(format!(
-                                                "{icone}  {}",
-                                                if seg.titulo.is_empty() {
-                                                    "(sem título)"
-                                                } else {
-                                                    &seg.titulo
-                                                }
-                                            ))
+                                            RichText::new(if seg.titulo.is_empty() {
+                                                "(sem título)"
+                                            } else {
+                                                &seg.titulo
+                                            })
                                             .color(c),
                                         );
                                         ui.with_layout(

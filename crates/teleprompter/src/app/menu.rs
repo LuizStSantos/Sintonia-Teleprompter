@@ -64,17 +64,11 @@ impl App {
                 }
             });
             ui.menu_button("Apresentador", |ui| {
-                let txt = if self.apresentador_aberto { "Fechar tela do apresentador" } else { "Abrir tela do apresentador" };
-                if ui.button(txt).clicked() {
-                    self.apresentador_aberto = !self.apresentador_aberto;
-                    ui.close();
-                }
-                ui.checkbox(&mut self.cfg.tela_cheia_apresentador, "Tela cheia (F11)");
-                ui.horizontal(|ui| {
-                    ui.label("Monitor:");
-                    ui.add(egui::DragValue::new(&mut self.cfg.monitor_apresentador).range(0..=8));
-                });
-                ui.label(RichText::new("0 = primeiro monitor, 1 = segundo…\nVale ao entrar em tela cheia.").small().weak());
+                ui.set_width(320.0);
+                ui.label(RichText::new("Em qual tela vai o texto do apresentador?").font(tema::forte(13.0)));
+                ui.label(RichText::new("Clique no monitor: a tela já abre em tela cheia nele.").size(11.5).color(p.texto_mais_fraco));
+                ui.add_space(4.0);
+                self.seletor_monitor(ui);
             });
             ui.menu_button("Predefinições", |ui| {
                 if self.cfg.predefinicoes.is_empty() {
@@ -104,6 +98,13 @@ impl App {
                 self.cfg.mostrar_formatacao = !self.cfg.mostrar_formatacao;
             }
             ui.menu_button("Aparência", |ui| {
+                let cheia = ui.ctx().input(|i| i.viewport().fullscreen.unwrap_or(false));
+                if ui.selectable_label(cheia, "Tela cheia do operador (F11)").clicked() {
+                    let ctx = ui.ctx().clone();
+                    self.alternar_tela_cheia_operador(&ctx);
+                    ui.close();
+                }
+                ui.separator();
                 ui.selectable_value(&mut self.cfg.tema_claro, false, "Tema escuro");
                 ui.selectable_value(&mut self.cfg.tema_claro, true, "Tema claro (fundo branco)");
                 ui.label(RichText::new("Só a tela do operador. As cores do texto do\napresentador ficam em Formatação.").small().weak());
@@ -112,7 +113,8 @@ impl App {
                 ui.label(RichText::new("Atalhos").strong());
                 for (k, d) in [
                     ("Espaço", "rolar / pausar"),
-                    ("Segurar ⏩ / ⏪", "passa rápido para a frente / para trás"),
+                    ("Segurar avançar / voltar", "passa rápido para a frente / para trás"),
+                    ("F11 (operador)", "tela cheia desta janela"),
                     ("Botão direito (segurar)", "passa rápido sobre o texto"),
                     ("Shift + ↓ / ↑", "passa rápido com o teclado"),
                     ("End", "para a rolagem"),
@@ -140,7 +142,12 @@ impl App {
 
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 match &self.usuario {
-                    Some(u) => ui.label(RichText::new(format!("👤 {}", u.nome())).font(tema::forte(13.5)).color(p.texto)),
+                    Some(u) => {
+                        let r = ui.label(RichText::new(u.nome()).font(tema::forte(13.5)).color(p.texto));
+                        let (q, _) = ui.allocate_exact_size(Vec2::splat(18.0), Sense::hover());
+                        icones::desenhar(ui, q, Icone::Usuario, p.texto_fraco);
+                        r
+                    }
                     None => ui.label(RichText::new("sem login (modo TXT)").color(p.texto_mais_fraco)),
                 };
                 // "NO AR" pulsando, como o relógio da barra lateral do Sintonia.

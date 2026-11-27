@@ -15,6 +15,15 @@ pub enum Alinhamento {
     Centro,
 }
 
+/// Como a tela é desenhada. O OpenGL é mais leve e roda bem em computadores
+/// simples e placas de vídeo integradas; o "moderno" (wgpu: DirectX 12/Vulkan/
+/// Metal) pode ser melhor em máquinas novas.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Renderizador {
+    OpenGl,
+    Moderno,
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 #[serde(default)]
 pub struct Settings {
@@ -57,6 +66,13 @@ pub struct Settings {
     /// Cronômetro da entrevista: `false` = só rodando (conta para cima);
     /// `true` = com tempo (regressivo a partir da duração).
     pub entrevista_com_tempo: bool,
+
+    /// Barra de baixo recolhida (só o essencial numa linha).
+    pub barra_recolhida: bool,
+    /// Painel do roteiro (esquerda) recolhido.
+    pub lateral_recolhida: bool,
+    /// Renderizador gráfico (vale ao abrir o programa).
+    pub renderizador: Renderizador,
 
     /// Tema claro da tela do operador (igual à opção do Sintonia).
     pub tema_claro: bool,
@@ -104,6 +120,9 @@ impl Default for Settings {
             palavras_por_minuto: 150,
             crono_automatico: true,
             entrevista_com_tempo: false,
+            barra_recolhida: false,
+            lateral_recolhida: false,
+            renderizador: Renderizador::OpenGl,
             tema_claro: false,
             mostrar_formatacao: false,
             lembrar_login: true,

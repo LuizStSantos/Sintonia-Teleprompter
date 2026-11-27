@@ -11,11 +11,16 @@ mod config;
 mod visual;
 
 fn main() -> eframe::Result<()> {
+    let renderer = match config::Settings::load().renderizador {
+        config::Renderizador::OpenGl => eframe::Renderer::Glow,
+        config::Renderizador::Moderno => eframe::Renderer::Wgpu,
+    };
     let opcoes = eframe::NativeOptions {
+        renderer,
         viewport: egui::ViewportBuilder::default()
             .with_title("Sintonia Teleprompter — Operador")
-            .with_inner_size([1360.0, 820.0])
-            .with_min_inner_size([1180.0, 640.0])
+            .with_inner_size([1360.0, 760.0])
+            .with_min_inner_size([1024.0, 600.0])
             .with_icon(
                 eframe::icon_data::from_png_bytes(visual::tema::ICONE_PNG).unwrap_or_default(),
             ),

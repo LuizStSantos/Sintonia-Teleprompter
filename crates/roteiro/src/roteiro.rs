@@ -22,6 +22,17 @@ pub enum Tipo {
 }
 
 impl Tipo {
+    /// Etiqueta curta para listas (MAT, ENT, INT...).
+    pub fn sigla(self) -> &'static str {
+        match self {
+            Tipo::Materia => "MAT",
+            Tipo::Entrevistado => "ENT",
+            Tipo::Manual => "MAN",
+            Tipo::Intervalo => "INT",
+            Tipo::Texto => "TXT",
+        }
+    }
+
     pub fn rotulo(self) -> &'static str {
         match self {
             Tipo::Materia => "Matéria",

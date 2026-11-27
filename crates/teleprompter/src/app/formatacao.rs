@@ -40,8 +40,7 @@ impl App {
                 {
                     aplicar = Some(i);
                 }
-                if ui
-                    .small_button("🗑")
+                if icones::botao(ui, Icone::Lixeira, 24.0)
                     .on_hover_text("Excluir esta predefinição")
                     .clicked()
                 {
@@ -82,8 +81,7 @@ impl App {
             ui.horizontal(|ui| {
                 ui.heading("Formatação");
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    if ui
-                        .small_button("✕")
+                    if icones::botao(ui, Icone::Fechar, 24.0)
                         .on_hover_text("Esconder (reabre no menu Formatação)")
                         .clicked()
                     {
@@ -109,7 +107,7 @@ impl App {
                 .show_ui(ui, |ui| {
                     ui.add(
                         egui::TextEdit::singleline(&mut self.busca_fonte)
-                            .hint_text("🔍 procurar fonte"),
+                            .hint_text("procurar fonte"),
                     );
                     if ui
                         .selectable_label(
@@ -220,34 +218,34 @@ impl App {
             );
 
             ui.separator();
-            ui.heading("Tela do apresentador");
-            let txt = if self.apresentador_aberto {
-                "Fechar tela do apresentador"
-            } else {
-                "Abrir tela do apresentador"
-            };
-            let p = self.p();
-            let (cor_txt, fundo) = if self.apresentador_aberto {
-                (p.texto, p.panel_2)
-            } else {
-                (Color32::WHITE, p.vermelho)
-            };
-            if ui
-                .add(
-                    egui::Button::new(RichText::new(txt).font(tema::forte(14.0)).color(cor_txt))
-                        .fill(fundo)
-                        .min_size(Vec2::new(ui.available_width(), 32.0)),
-                )
-                .clicked()
-            {
-                self.apresentador_aberto = !self.apresentador_aberto;
-            }
-            ui.checkbox(&mut self.cfg.tela_cheia_apresentador, "Tela cheia (F11)");
+            ui.heading("Desempenho");
+            ui.label(
+                RichText::new("Renderizador (vale ao abrir o programa de novo)")
+                    .size(11.5)
+                    .weak(),
+            );
             ui.horizontal(|ui| {
-                ui.label("Monitor");
-                ui.add(egui::DragValue::new(&mut self.cfg.monitor_apresentador).range(0..=8));
-                ui.label(RichText::new("(0 = principal)").small().weak());
+                ui.selectable_value(
+                    &mut self.cfg.renderizador,
+                    Renderizador::OpenGl,
+                    "OpenGL (leve)",
+                )
+                .on_hover_text(
+                    "Recomendado para computadores simples e placas de vídeo integradas",
+                );
+                ui.selectable_value(&mut self.cfg.renderizador, Renderizador::Moderno, "Moderno")
+                    .on_hover_text(
+                        "DirectX 12 / Vulkan / Metal — pode ser melhor em computadores novos",
+                    );
             });
+            ui.separator();
+            ui.heading("Tela do apresentador");
+            ui.label(
+                RichText::new("Clique no monitor: abre em tela cheia nele.")
+                    .size(11.5)
+                    .weak(),
+            );
+            self.seletor_monitor(ui);
             ui.checkbox(
                 &mut self.cfg.mostrar_relogio_apresentador,
                 "Mostrar cronômetro para o apresentador",

@@ -4,15 +4,16 @@ members = ["crates/*"]
 default-members = ["crates/teleprompter"]
 
 [workspace.package]
-version = "0.4.0"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.88"
 
 [workspace.dependencies]
 chrono = "0.4.45"
 directories = "6.0.0"
-eframe = "0.37.0"
+eframe = { version = "0.37.0", features = ["glow"] }
 egui = "0.37.0"
+winit = { version = "0.30", default-features = false }
 fontdb = "0.24.0"
 keyring = "4.2.0"
 reqwest = { version = "0.13.5", features = ["json", "cookies", "blocking"] }

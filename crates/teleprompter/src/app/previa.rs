@@ -5,7 +5,7 @@ use super::*;
 impl App {
     pub(super) fn previa(&mut self, ui: &mut Ui) {
         let mut disponivel = ui.available_rect_before_wrap();
-        disponivel.min.y += 18.0; // espaço para o rótulo acima da prévia
+        disponivel.min.y += 26.0; // espaço para o rótulo acima da prévia
         let proporcao =
             (self.tamanho_apresentador.x / self.tamanho_apresentador.y.max(1.0)).clamp(0.3, 4.0);
         let mut tam = Vec2::new(disponivel.width(), disponivel.width() / proporcao);
@@ -115,5 +115,38 @@ impl App {
                 p.texto_mais_fraco
             },
         );
+        // Atalho: abrir/fechar a tela do apresentador (direto no monitor indicado).
+        let (txt, fundo, cor_txt) = if self.apresentador_aberto {
+            ("Fechar apresentador", p.panel_2, p.texto)
+        } else {
+            ("Abrir apresentador", p.vermelho, Color32::WHITE)
+        };
+        let area = Rect::from_min_max(
+            egui::pos2(rect.right() - 220.0, rect.top() - 28.0),
+            egui::pos2(rect.right(), rect.top() - 3.0),
+        );
+        let resp = ui
+            .scope_builder(
+                egui::UiBuilder::new()
+                    .max_rect(area)
+                    .layout(Layout::right_to_left(Align::Center)),
+                |ui| {
+                    icones::botao_com(
+                        ui,
+                        Icone::TelaCheia,
+                        Some(RichText::new(txt).size(12.5).color(cor_txt)),
+                        Vec2::new(0.0, 24.0),
+                        Some(fundo),
+                        Some(cor_txt),
+                    )
+                },
+            )
+            .inner;
+        if resp
+            .on_hover_text("Abre a tela do apresentador em tela cheia no outro monitor (escolha o monitor no menu Apresentador)")
+            .clicked()
+        {
+            self.alternar_apresentador();
+        }
     }
 }
